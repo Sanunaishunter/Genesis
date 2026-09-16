@@ -63,10 +63,21 @@
   const MIN_TREES_TO_KEEP = 4;
   const CHOP_CHANCE_PER_TICK = 0.02;
   const WOOD_PER_CHOP = 6;
+  const WOOD_PER_FARM_CLEAR = 3;
   const HOUSE_COST = 30;
   const HOUSE_CAP = 20;
   const BRIDGE_COST = 20;
   const DROWN_CHANCE = 0.08; // per tick spent in a river tile with no bridge
+
+  const CROP_GROW_TICKS = 12;
+
+  const TEACH_WISDOM_BOOST = 40;
+  const TEACH_COOLDOWN = 15; // ticks before a commanded sage can teach again
+
+  const FISH_CAP = 40;
+  const WHALE_CAP = 6;
+  const FISH_SPEED = 0.05;
+  const WHALE_SPEED = 0.02;
 
   // ----- Seeded RNG ---------------------------------------------------------
   function mulberry32(seed) {
@@ -123,7 +134,7 @@
         if (value > 0.25) type = TERRAIN.GRASS;
         else if (value > 0) type = TERRAIN.SAND;
         else type = TERRAIN.WATER;
-        row.push({ type, shade: rand() * 2 - 1, cave: false, bridge: false });
+        row.push({ type, shade: rand() * 2 - 1, cave: false, bridge: false, farmland: false, cropReady: false, cropTimer: 0 });
       }
       tiles.push(row);
     }
@@ -165,6 +176,11 @@
     return t.type === TERRAIN.RIVER && !t.bridge;
   }
 
+  function isOcean(tx, ty) {
+    if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return false;
+    return state.tiles[ty][tx].type === TERRAIN.WATER;
+  }
+
   // ----- Game state ----------------------------------------------------------
   const state = {
     tiles: generateWorld(),
@@ -179,6 +195,7 @@
     wisdom: 0,
     tech: { fire: false, farming: false, tribe: false },
     wood: 0,
+    readyFarmland: [],
     entities: [], // trees, animals, humans
     day: 0,
     speed: "normal",
@@ -207,6 +224,18 @@
         for (let dx = -r; dx <= r; dx++) {
           const x = tx + dx, y = ty + dy;
           if (isLand(state.tiles, x, y)) return { x, y };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findWaterNear(tx, ty, radius) {
+    for (let r = 0; r <= radius; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const x = tx + dx, y = ty + dy;
+          if (isOcean(x, y)) return { x, y };
         }
       }
     }
@@ -280,7 +309,16 @@
       age: ADULT_AGE, hunger: 0, state: "sage",
       moveTX: x, moveTY: y, wanderCd: randInt(30, 60),
       starveTicks: 0, mateCd: 999999, panicTicks: 0, isSage: true,
+      teachCooldown: 0,
     });
+  }
+
+  function makeFish(x, y) {
+    return addEntity({ kind: "fish", x, y, moveTX: x, moveTY: y, wanderCd: 0 });
+  }
+
+  function makeWhale(x, y) {
+    return addEntity({ kind: "whale", x, y, moveTX: x, moveTY: y, wanderCd: 0, spoutCd: randInt(20, 50) });
   }
 
   // ----- God actions -----------------------------------------------------------
@@ -294,6 +332,19 @@
 
   function treeAt(tx, ty) {
     return state.entities.find(e => e.kind === "tree" && Math.round(e.x) === tx && Math.round(e.y) === ty);
+  }
+
+  function sageAt(tx, ty) {
+    return state.entities.find(e => e.isSage && Math.round(e.x) === tx && Math.round(e.y) === ty);
+  }
+
+  function commandSageTeach(sage, silent) {
+    if (sage.teachCooldown > 0) { if (!silent) toast("聖人正在傳授中，請稍候"); return; }
+    const nextTech = !state.tech.fire ? "fire" : !state.tech.farming ? "farming" : !state.tech.tribe ? "tribe" : null;
+    if (!nextTech) { if (!silent) toast("🧙 各項智慧都已傳授完畢"); return; }
+    state.wisdom += TEACH_WISDOM_BOOST;
+    sage.teachCooldown = TEACH_COOLDOWN;
+    toast("🧙 聖人正傳授「" + TECH_LABEL[nextTech] + "」的智慧！");
   }
 
   function setSpeed(s) {
@@ -429,6 +480,34 @@
       if (!silent) toast(ok ? "🌊 河道向前延伸" : "這裡無法挖掘河道");
       return;
     }
+    if (tool === "spawn-fish") {
+      if (!isOcean(tx, ty)) { if (!silent) toast("魚只能放到海裡"); return; }
+      if (state.entities.filter(e => e.kind === "fish").length >= FISH_CAP) { if (!silent) toast("魚群已經足夠"); return; }
+      makeFish(tx, ty);
+      if (!silent) toast("🐟 一群魚游進了海裡");
+      return;
+    }
+    if (tool === "spawn-whale") {
+      if (!isOcean(tx, ty)) { if (!silent) toast("鯨魚只能放到海裡"); return; }
+      if (state.entities.filter(e => e.kind === "whale").length >= WHALE_CAP) { if (!silent) toast("鯨魚已經足夠"); return; }
+      makeWhale(tx, ty);
+      if (!silent) toast("🐋 一頭鯨魚躍入海中");
+      return;
+    }
+    if (tool === "sage") {
+      const existing = sageAt(tx, ty);
+      if (existing) {
+        commandSageTeach(existing, silent);
+      } else if (state.entities.filter(e => e.isSage).length >= SAGE_CAP) {
+        if (!silent) toast("聖人的數量已經足夠");
+      } else if (isLand(state.tiles, tx, ty)) {
+        makeSage(tx, ty);
+        if (!silent) toast("🧙 一位聖人降臨，人們開始向祂膜拜");
+      } else if (!silent) {
+        toast("這裡無法施展這項能力");
+      }
+      return;
+    }
 
     if (!isLand(state.tiles, tx, ty)) { if (!silent) toast("這裡無法施展這項能力"); return; }
 
@@ -451,10 +530,6 @@
     } else if (tool === "mountain") {
       paintMountain(tx, ty);
       if (!silent) toast("⛰️ 山岳隆起，中心留下了一個洞穴");
-    } else if (tool === "sage") {
-      if (state.entities.filter(e => e.isSage).length >= SAGE_CAP) { if (!silent) toast("聖人的數量已經足夠"); return; }
-      makeSage(tx, ty);
-      if (!silent) toast("🧙 一位聖人降臨，人們開始向祂膜拜");
     }
   }
 
@@ -543,8 +618,42 @@
 
   function tickRiverHazard() {
     for (const e of state.entities) {
-      if (e.kind === "tree" || e.isSage) continue;
+      if (e.kind === "tree" || e.kind === "fish" || e.kind === "whale" || e.isSage) continue;
       if (isDangerousRiver(e.x, e.y) && rand() < DROWN_CHANCE) e.dead = true;
+    }
+  }
+
+  function tickFarmland() {
+    const ready = [];
+    const growMul = seasonGrowMul();
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        const t = state.tiles[y][x];
+        if (!t.farmland) continue;
+        if (t.cropReady) { ready.push({ x, y }); continue; }
+        t.cropTimer += 1 / growMul;
+        if (t.cropTimer >= CROP_GROW_TICKS) { t.cropReady = true; t.cropTimer = 0; ready.push({ x, y }); }
+      }
+    }
+    state.readyFarmland = ready;
+  }
+
+  function tickSeaLife() {
+    const fishAndWhales = state.entities.filter(e => e.kind === "fish" || e.kind === "whale");
+    for (const s of fishAndWhales) {
+      if (s.wanderCd <= 0) {
+        const spot = findWaterNear(Math.round(s.x + randRange(-4, 4)), Math.round(s.y + randRange(-4, 4)), 3);
+        if (spot) { s.moveTX = spot.x; s.moveTY = spot.y; }
+        s.wanderCd = randInt(6, 12);
+      } else s.wanderCd--;
+
+      if (s.kind === "whale") {
+        s.spoutCd--;
+        if (s.spoutCd <= 0) {
+          addEffect({ type: "spout", x: s.x, y: s.y, life: 22, maxLife: 22 });
+          s.spoutCd = randInt(35, 80);
+        }
+      }
     }
   }
 
@@ -601,17 +710,18 @@
   }
 
   function nearestFoodForHuman(h) {
-    let best = null, bestD = SENSE_RADIUS * SENSE_RADIUS;
+    let best = null, bestD = SENSE_RADIUS * SENSE_RADIUS, bestIsFarm = false;
     for (const e of state.entities) {
-      if (e.kind === "tree" && e.stage === 2 && e.hasFruit) {
+      if ((e.kind === "tree" && e.stage === 2 && e.hasFruit) || e.kind === "animal" || e.kind === "fish") {
         const d = dist2(h, e);
-        if (d < bestD) { bestD = d; best = e; }
-      } else if (e.kind === "animal") {
-        const d = dist2(h, e);
-        if (d < bestD) { bestD = d; best = e; }
+        if (d < bestD) { bestD = d; best = e; bestIsFarm = false; }
       }
     }
-    return best;
+    for (const f of state.readyFarmland) {
+      const d = dist2(h, f);
+      if (d < bestD) { bestD = d; best = f; bestIsFarm = true; }
+    }
+    return best ? { target: best, isFarm: bestIsFarm } : null;
   }
 
   function tickWisdomAndTech(humans) {
@@ -691,10 +801,14 @@
   function tickHumans() {
     const humans = state.entities.filter(e => e.kind === "human");
     const cap = popCap();
-    const canChop = state.tech.tribe && state.entities.filter(e => e.kind === "tree").length > MIN_TREES_TO_KEEP;
+    const treeCountOk = state.entities.filter(e => e.kind === "tree").length > MIN_TREES_TO_KEEP;
+    const canFarm = state.tech.farming && treeCountOk;
+    const canChop = state.tech.tribe && treeCountOk;
+    const sages = humans.filter(h => h.isSage);
 
     for (const h of humans) {
       if (h.isSage) {
+        if (h.teachCooldown > 0) h.teachCooldown--;
         if (h.wanderCd <= 0) {
           const spot = findLandNear(Math.round(h.x + randRange(-2, 2)), Math.round(h.y + randRange(-2, 2)), 2);
           if (spot) { h.moveTX = spot.x; h.moveTY = spot.y; }
@@ -733,6 +847,8 @@
         h.state = "seekFood";
       } else if (isAdult && h.hunger < MATE_HUNGER_MAX && h.mateCd <= 0 && humans.length < cap) {
         h.state = "seekMate";
+      } else if (isAdult && canFarm && (h.state === "farmClear" || rand() < CHOP_CHANCE_PER_TICK)) {
+        h.state = "farmClear";
       } else if (isAdult && canChop && (h.state === "chopWood" || rand() < CHOP_CHANCE_PER_TICK)) {
         h.state = "chopWood";
       } else {
@@ -740,13 +856,20 @@
       }
 
       if (h.state === "seekFood") {
-        const target = nearestFoodForHuman(h);
-        if (target) {
+        const found = nearestFoodForHuman(h);
+        if (found) {
+          const target = found.target;
           h.moveTX = target.x; h.moveTY = target.y;
           if (dist2(h, target) < 0.4) {
             h.hunger = Math.max(0, h.hunger - 60);
-            if (target.kind === "tree") target.hasFruit = false;
-            else target.dead = true; // ate the animal
+            if (found.isFarm) {
+              const t = state.tiles[target.y][target.x];
+              t.cropReady = false; t.cropTimer = 0;
+            } else if (target.kind === "tree") {
+              target.hasFruit = false;
+            } else {
+              target.dead = true; // ate the animal or fish
+            }
           }
         } else {
           h.state = "wander";
@@ -777,6 +900,23 @@
         }
       }
 
+      if (h.state === "farmClear") {
+        const target = nearestChoppableTree(h);
+        if (target) {
+          h.moveTX = target.x; h.moveTY = target.y;
+          if (dist2(h, target) < 0.4) {
+            const tx = Math.round(target.x), ty = Math.round(target.y);
+            target.dead = true;
+            const t = state.tiles[ty][tx];
+            if (t.type === TERRAIN.GRASS) { t.farmland = true; t.cropReady = false; t.cropTimer = 0; }
+            state.wood += WOOD_PER_FARM_CLEAR;
+            h.state = "wander";
+          }
+        } else {
+          h.state = "wander";
+        }
+      }
+
       if (h.state === "chopWood") {
         const target = nearestChoppableTree(h);
         if (target) {
@@ -793,7 +933,16 @@
 
       if (h.state === "wander") {
         if (h.wanderCd <= 0) {
-          const spot = findLandNear(Math.round(h.x + randRange(-5, 5)), Math.round(h.y + randRange(-5, 5)), 3);
+          let cx = h.x, cy = h.y, range = 5;
+          if (sages.length > 0) {
+            let nearest = null, bestD = SAGE_WORSHIP_RADIUS * SAGE_WORSHIP_RADIUS;
+            for (const s of sages) {
+              const d = dist2(h, s);
+              if (d < bestD) { bestD = d; nearest = s; }
+            }
+            if (nearest) { cx = nearest.x; cy = nearest.y; range = 6; }
+          }
+          const spot = findLandNear(Math.round(cx + randRange(-range, range)), Math.round(cy + randRange(-range, range)), 3);
           if (spot) { h.moveTX = spot.x; h.moveTY = spot.y; }
           h.wanderCd = randInt(5, 10);
         } else h.wanderCd--;
@@ -804,10 +953,12 @@
     tickWisdomAndTech(humans);
   }
 
+  const MOVE_SPEED = { human: HUMAN_SPEED, animal: ANIMAL_SPEED, fish: FISH_SPEED, whale: WHALE_SPEED };
+
   function moveEntitiesStep(dtFactor) {
     for (const e of state.entities) {
-      if (e.kind !== "human" && e.kind !== "animal") continue;
-      const base = e.kind === "human" ? HUMAN_SPEED : ANIMAL_SPEED;
+      const base = MOVE_SPEED[e.kind];
+      if (!base) continue;
       const speed = base * (e.panicTicks > 0 ? PANIC_SPEED_MUL : 1);
       const dx = e.moveTX - e.x, dy = e.moveTY - e.y;
       const d = Math.hypot(dx, dy);
@@ -831,7 +982,9 @@
     tickFire();
     tickRiverHazard();
     tickTrees();
+    tickFarmland();
     tickAnimals();
+    tickSeaLife();
     tickHumans();
     state.entities = state.entities.filter(e => !e.dead);
   }
@@ -878,14 +1031,32 @@
           ctx.fillStyle = adjustColor(TERRAIN_COLOR[TERRAIN.SAND], tile.shade * 10);
         } else if (tile.type === TERRAIN.MOUNTAIN) {
           ctx.fillStyle = adjustColor(TERRAIN_COLOR[TERRAIN.MOUNTAIN], tile.shade * 14);
+        } else if (tile.farmland) {
+          ctx.fillStyle = adjustColor("#8a6a3f", tile.shade * 12);
         } else {
           ctx.fillStyle = adjustColor(grassBase, tile.shade * 12);
         }
         ctx.fillRect(wx, wy, TILE, TILE);
 
-        if (tile.type === TERRAIN.GRASS && (x * 3 + y * 7) % 13 === 0) {
+        if (tile.type === TERRAIN.GRASS && !tile.farmland && (x * 3 + y * 7) % 13 === 0) {
           ctx.fillStyle = "rgba(0,0,0,0.07)";
           ctx.fillRect(wx + 3, wy + 3, TILE - 6, TILE - 6);
+        }
+        if (tile.farmland) {
+          ctx.strokeStyle = "rgba(0,0,0,0.18)";
+          ctx.lineWidth = 1;
+          for (let furrow = 3; furrow < TILE; furrow += 5) {
+            ctx.beginPath();
+            ctx.moveTo(wx + furrow, wy + 2);
+            ctx.lineTo(wx + furrow, wy + TILE - 2);
+            ctx.stroke();
+          }
+          if (tile.cropReady) {
+            ctx.fillStyle = "#8fd35c";
+            for (let sx = 4; sx < TILE - 2; sx += 5) {
+              ctx.beginPath(); ctx.arc(wx + sx, wy + TILE * 0.6, 1.4, 0, 7); ctx.fill();
+            }
+          }
         }
         if (tile.type === TERRAIN.MOUNTAIN) {
           ctx.fillStyle = "rgba(255,255,255,0.12)";
@@ -964,15 +1135,42 @@
   }
 
   function drawEntities() {
-    const trees = [], animals = [], humans = [], houses = [];
+    const trees = [], animals = [], humans = [], houses = [], fishes = [], whales = [];
     for (const e of state.entities) {
       if (e.kind === "tree") trees.push(e);
       else if (e.kind === "animal") animals.push(e);
       else if (e.kind === "human") humans.push(e);
       else if (e.kind === "house") houses.push(e);
+      else if (e.kind === "fish") fishes.push(e);
+      else if (e.kind === "whale") whales.push(e);
     }
     const byY = (a, b) => a.y - b.y;
     trees.sort(byY); animals.sort(byY); humans.sort(byY); houses.sort(byY);
+
+    for (const w of whales) {
+      const px = w.x * TILE + TILE / 2, py = w.y * TILE + TILE / 2;
+      ctx.fillStyle = "#3d5a72";
+      ctx.beginPath(); ctx.ellipse(px, py, 9, 4.2, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = "#2e4658";
+      ctx.beginPath();
+      ctx.moveTo(px + 2, py - 3.5);
+      ctx.lineTo(px + 5, py - 8);
+      ctx.lineTo(px + 6, py - 3);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    for (const f of fishes) {
+      const px = f.x * TILE + TILE / 2, py = f.y * TILE + TILE / 2;
+      ctx.fillStyle = "#bcd8e6";
+      ctx.beginPath(); ctx.ellipse(px, py, 3, 1.4, 0, 0, 7); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(px - 3, py);
+      ctx.lineTo(px - 5, py - 1.6);
+      ctx.lineTo(px - 5, py + 1.6);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     for (const e of houses) {
       const px = e.x * TILE + TILE / 2, py = e.y * TILE + TILE / 2;
@@ -1079,6 +1277,17 @@
       } else if (ef.type === "scorch") {
         ctx.fillStyle = `rgba(40,30,20,${t * 0.6})`;
         ctx.beginPath(); ctx.arc(px, py, 5 * (1 - t) + 2, 0, 7); ctx.fill();
+      } else if (ef.type === "spout") {
+        const rise = (1 - t) * 12;
+        ctx.strokeStyle = `rgba(220,240,255,${t * 0.8})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(px, py - 4);
+        ctx.lineTo(px, py - 4 - rise);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(220,240,255,${t * 0.6})`;
+        ctx.beginPath(); ctx.arc(px - 3, py - 4 - rise, 1.6, 0, 7); ctx.fill();
+        ctx.beginPath(); ctx.arc(px + 3, py - 4 - rise, 1.6, 0, 7); ctx.fill();
       }
     }
   }
@@ -1122,6 +1331,8 @@
     document.getElementById("stat-children").textContent = children;
     document.getElementById("stat-trees").textContent = state.entities.filter(e => e.kind === "tree").length;
     document.getElementById("stat-animals").textContent = state.entities.filter(e => e.kind === "animal").length;
+    document.getElementById("stat-fish").textContent = state.entities.filter(e => e.kind === "fish").length;
+    document.getElementById("stat-whales").textContent = state.entities.filter(e => e.kind === "whale").length;
 
     const c = state.weatherCounts;
     const parts = [];
@@ -1140,7 +1351,7 @@
   }
 
   // ----- Ability button UI ---------------------------------------------------
-  const LIFE_TOOLS = ["plant-seed", "spawn-animal", "spawn-man", "spawn-woman"];
+  const LIFE_TOOLS = ["plant-seed", "spawn-animal", "spawn-man", "spawn-woman", "spawn-fish", "spawn-whale"];
   const abilityButtons = Array.from(document.querySelectorAll('button.tool:not([data-tool^="speed-"])'));
   const lifeButtons = abilityButtons.filter(b => LIFE_TOOLS.includes(b.dataset.tool));
 

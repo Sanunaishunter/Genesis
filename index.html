@@ -15,6 +15,8 @@
         <span>🧑 人口 <b id="stat-pop">0</b>（<span id="stat-men">0</span>♂ / <span id="stat-women">0</span>♀ / <span id="stat-children">0</span>幼）</span>
         <span>🌳 樹木 <b id="stat-trees">0</b></span>
         <span>🐇 動物 <b id="stat-animals">0</b></span>
+        <span>🐟 魚 <b id="stat-fish">0</b></span>
+        <span>🐋 鯨魚 <b id="stat-whales">0</b></span>
         <span>🌦️ 天氣：<b id="stat-weather">☀️ 全島晴朗</b></span>
         <span>🍂 季節：<b id="stat-season">🌸 春</b></span>
         <span>🧠 科技：<b id="stat-tech">尚未開化</b></span>
@@ -48,8 +50,10 @@
             <button class="tool" data-tool="spawn-animal">🐇 創造動物</button>
             <button class="tool" data-tool="spawn-man">🧔 創造男人</button>
             <button class="tool" data-tool="spawn-woman">👩 創造女人</button>
+            <button class="tool" data-tool="spawn-fish">🐟 放魚</button>
+            <button class="tool" data-tool="spawn-whale">🐋 放鯨魚</button>
           </div>
-          <p class="hint">選擇能力後，在陸地上點按或按住拖曳即可連續施展。天氣鎖定中無法使用。</p>
+          <p class="hint">選擇能力後，在陸地（魚與鯨魚則是海上）點按或按住拖曳即可連續施展。天氣鎖定中無法使用。海裡有魚，居民肚子餓時就會去抓來吃；鯨魚只會悠游噴水，不會被捕食。</p>
         </section>
 
         <section>
@@ -66,9 +70,14 @@
             地震會讓範圍內的人和動物驚恐亂跑；打雷指哪打哪，連續擊中同一棵樹 3 次會使其起火，
             打到生物會直接雷擊斃命；火焰所到之處約 60 秒後會自然熄滅；造山會在點擊處留下一個
             可供人與動物躲藏的洞穴，其餘隆起的山地無法通行；造河可用拖曳挖出河道，河道無法直接
-            通行，強行涉水有機率溺水，需等部落科技解鎖後由居民自行搜集木材造橋；聖人降臨後，
-            附近的人會向祂膜拜、累積智慧，依序解鎖用火、農耕、部落等科技——部落科技解鎖後，
-            居民會自己去砍成熟的樹木收集木材，並自動蓋房子、造橋（會保留最後幾棵樹不砍，避免絕跡）。
+            通行，強行涉水有機率溺水，需等部落科技解鎖後由居民自行搜集木材造橋。
+          </p>
+          <p class="hint">
+            點擊空地放置聖人，人們會向祂膜拜、累積智慧，依序解鎖用火、農耕、部落等科技；
+            點擊「已存在的聖人」則是直接下令祂加速傳授（有冷卻時間）。平時人們不會只顧著亂晃，
+            會盡量聚在聖人附近活動。進入農耕科技後，居民會開始把成熟的樹木清成農田，農田會定期
+            長出作物供人採收；部落科技解鎖後，居民還會額外去砍樹收集木材，自動蓋房子、造橋
+            （兩者都會保留最後幾棵樹不砍，避免絕跡）。
           </p>
         </section>
 
