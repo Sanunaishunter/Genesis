@@ -16,6 +16,8 @@
         <span>🌳 樹木 <b id="stat-trees">0</b></span>
         <span>🐇 動物 <b id="stat-animals">0</b></span>
         <span>🌦️ 天氣：<b id="stat-weather">☀️ 全島晴朗</b></span>
+        <span>🍂 季節：<b id="stat-season">🌸 春</b></span>
+        <span>🧠 科技：<b id="stat-tech">尚未開化</b></span>
       </div>
     </header>
 
@@ -49,6 +51,23 @@
         </section>
 
         <section>
+          <h2>⚡ 天災異能</h2>
+          <div class="btn-row">
+            <button class="tool" data-tool="quake">🌍 地震</button>
+            <button class="tool" data-tool="lightning">⚡ 打雷</button>
+            <button class="tool" data-tool="fire">🔥 火焰</button>
+            <button class="tool" data-tool="mountain">⛰️ 造山</button>
+            <button class="tool" data-tool="sage">🧙 聖人</button>
+          </div>
+          <p class="hint">
+            地震會讓範圍內的人和動物驚恐亂跑；打雷指哪打哪，連續擊中同一棵樹 3 次會使其起火，
+            打到生物會直接雷擊斃命；火焰所到之處約 60 秒後會自然熄滅；造山會在點擊處留下一個
+            可供人與動物躲藏的洞穴，其餘隆起的山地無法通行；聖人降臨後，附近的人會向祂膜拜、
+            累積智慧，依序解鎖用火、農耕、部落等科技。
+          </p>
+        </section>
+
+        <section>
           <h2>⏱️ 時間流速</h2>
           <div class="btn-row">
             <button class="tool" data-tool="speed-pause">⏸ 暫停</button>
@@ -68,8 +87,9 @@
           <p class="hint">
             一開始島上空無一物。種下種子會長成樹木並結出果實；
             創造動物與男女後，他們會自己覓食、成長、繁衍與老去。
-            天氣現在是「用手指指哪、哪裡就發生」的局部效果：降雨加速當地生長，
-            乾旱使當地居民更容易挨餓，風暴可能摧毀當地幼苗，且會隨時間逐漸消散。
+            天氣是「用手指指哪、哪裡就發生」的局部效果，會隨時間自然消散。
+            島上也會自動輪替春夏秋冬，冬天萬物生長變慢、居民更容易挨餓，
+            春天則萬物欣欣向榮。
           </p>
         </section>
       </aside>
