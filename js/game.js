@@ -21,8 +21,8 @@
   const MATE_HUNGER_MAX = 40;
   const MATE_COOLDOWN = 55;
   const SENSE_RADIUS = 9;
-  const HUMAN_SPEED = 0.045;
-  const ANIMAL_SPEED = 0.032;
+  const HUMAN_SPEED = 0.045 / 6;
+  const ANIMAL_SPEED = 0.032 / 6;
   const PANIC_SPEED_MUL = 1.9;
 
   const TICK_MS = { pause: 0, normal: 260, fast: 70 };
@@ -281,9 +281,11 @@
     });
   }
 
-  function makeAnimal(x, y) {
+  const ANIMAL_SPECIES = ["chicken", "duck", "pig", "sheep"];
+
+  function makeAnimal(x, y, species) {
     return addEntity({
-      kind: "animal", x, y,
+      kind: "animal", species: species || choice(ANIMAL_SPECIES), x, y,
       moveTX: x, moveTY: y, wanderCd: 0,
       breedCd: randInt(10, 30), panicTicks: 0,
     });
@@ -657,6 +659,17 @@
     }
   }
 
+  function tickHouses() {
+    for (const e of state.entities) {
+      if (e.kind !== "house") continue;
+      e.smokeCd--;
+      if (e.smokeCd <= 0) {
+        addEffect({ type: "smoke", x: e.x + 0.2, y: e.y - 0.6, life: 45, maxLife: 45 });
+        e.smokeCd = randInt(6, 14);
+      }
+    }
+  }
+
   function tickTrees() {
     for (const e of state.entities) {
       if (e.kind !== "tree") continue;
@@ -701,7 +714,7 @@
           if (other === a) continue;
           if (dist2(a, other) <= 4 && rand() < 0.15) {
             const spot = findLandNear(Math.round(a.x), Math.round(a.y), 2);
-            if (spot) { makeAnimal(spot.x, spot.y); a.breedCd = randInt(25, 45); other.breedCd = randInt(25, 45); }
+            if (spot) { makeAnimal(spot.x, spot.y, choice([a.species, other.species])); a.breedCd = randInt(25, 45); other.breedCd = randInt(25, 45); }
             break;
           }
         }
@@ -781,7 +794,7 @@
         const cx = sx / n, cy = sy / n;
         const spot = findLandNear(Math.round(cx + randRange(-3, 3)), Math.round(cy + randRange(-3, 3)), 3);
         if (spot && !treeAt(spot.x, spot.y)) {
-          addEntity({ kind: "house", x: spot.x, y: spot.y });
+          addEntity({ kind: "house", x: spot.x, y: spot.y, smokeCd: randInt(4, 12) });
           state.wood -= HOUSE_COST;
           toast("🏠 部落蓋起了一座房子");
         }
@@ -985,6 +998,7 @@
     tickFarmland();
     tickAnimals();
     tickSeaLife();
+    tickHouses();
     tickHumans();
     state.entities = state.entities.filter(e => !e.dead);
   }
@@ -1134,6 +1148,43 @@
     ctx.fill();
   }
 
+  function drawAnimalBody(species, px, py) {
+    if (species === "chicken") {
+      ctx.fillStyle = "#f0e6d2";
+      ctx.beginPath(); ctx.ellipse(px, py, 2.8, 2.2, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 2.2, py - 1.6, 1.5, 0, 7); ctx.fill();
+      ctx.fillStyle = "#d94f4f";
+      ctx.beginPath(); ctx.arc(px + 2.2, py - 2.8, 0.7, 0, 7); ctx.fill();
+      ctx.fillStyle = "#e08a2b";
+      ctx.beginPath(); ctx.arc(px + 3.4, py - 1.6, 0.6, 0, 7); ctx.fill();
+    } else if (species === "duck") {
+      ctx.fillStyle = "#e4e8ea";
+      ctx.beginPath(); ctx.ellipse(px, py, 3.1, 2.2, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 2.4, py - 1.7, 1.5, 0, 7); ctx.fill();
+      ctx.fillStyle = "#e08a2b";
+      ctx.beginPath(); ctx.ellipse(px + 3.7, py - 1.5, 1.1, 0.6, 0, 0, 7); ctx.fill();
+    } else if (species === "pig") {
+      ctx.fillStyle = "#e9a8ae";
+      ctx.beginPath(); ctx.ellipse(px, py, 3.6, 2.6, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 2.8, py - 0.6, 1.6, 0, 7); ctx.fill();
+      ctx.fillStyle = "#c97e88";
+      ctx.beginPath(); ctx.ellipse(px + 3.6, py - 0.4, 0.8, 0.6, 0, 0, 7); ctx.fill();
+    } else if (species === "sheep") {
+      ctx.fillStyle = "#efe9dd";
+      ctx.beginPath(); ctx.arc(px - 1.4, py - 0.6, 1.8, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 1.2, py - 0.8, 1.9, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(px, py + 1, 2, 0, 7); ctx.fill();
+      ctx.fillStyle = "#4a3f38";
+      ctx.beginPath(); ctx.arc(px + 3, py - 0.4, 1.1, 0, 7); ctx.fill();
+    } else {
+      ctx.fillStyle = "#b98455";
+      ctx.beginPath(); ctx.ellipse(px, py, 3.4, 2.4, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 2.6, py - 1.4, 1.7, 0, 7); ctx.fill();
+      ctx.fillStyle = "#8a6339";
+      ctx.beginPath(); ctx.arc(px + 3.4, py - 3, 0.8, 0, 7); ctx.fill();
+    }
+  }
+
   function drawEntities() {
     const trees = [], animals = [], humans = [], houses = [], fishes = [], whales = [];
     for (const e of state.entities) {
@@ -1177,6 +1228,8 @@
       drawShadow(px, py, 6, 2.2);
       ctx.fillStyle = "#c9a06b";
       ctx.fillRect(px - 5, py - 1, 10, 6);
+      ctx.fillStyle = "#6b5a4a";
+      ctx.fillRect(px + 2.6, py - 11, 2.4, 4.5);
       ctx.fillStyle = "#8a4b3a";
       ctx.beginPath();
       ctx.moveTo(px - 6.5, py - 1);
@@ -1213,11 +1266,7 @@
     for (const a of animals) {
       const px = a.x * TILE + TILE / 2, py = a.y * TILE + TILE / 2;
       drawShadow(px, py, 3.4, 1.3);
-      ctx.fillStyle = "#b98455";
-      ctx.beginPath(); ctx.ellipse(px, py, 3.4, 2.4, 0, 0, 7); ctx.fill();
-      ctx.beginPath(); ctx.arc(px + 2.6, py - 1.4, 1.7, 0, 7); ctx.fill();
-      ctx.fillStyle = "#8a6339";
-      ctx.beginPath(); ctx.arc(px + 3.4, py - 3, 0.8, 0, 7); ctx.fill();
+      drawAnimalBody(a.species, px, py);
     }
 
     for (const h of humans) {
@@ -1288,6 +1337,13 @@
         ctx.fillStyle = `rgba(220,240,255,${t * 0.6})`;
         ctx.beginPath(); ctx.arc(px - 3, py - 4 - rise, 1.6, 0, 7); ctx.fill();
         ctx.beginPath(); ctx.arc(px + 3, py - 4 - rise, 1.6, 0, 7); ctx.fill();
+      } else if (ef.type === "smoke") {
+        const age = 1 - t;
+        const rise = age * 14;
+        const drift = Math.sin(age * 6 + ef.x * 3) * 2.5;
+        const r = 1.3 + age * 2.6;
+        ctx.fillStyle = `rgba(210,210,215,${t * 0.5})`;
+        ctx.beginPath(); ctx.arc(px + drift, py - rise, r, 0, 7); ctx.fill();
       }
     }
   }
