@@ -282,6 +282,20 @@
   }
 
   const ANIMAL_SPECIES = ["chicken", "duck", "pig", "sheep"];
+  const PREDATOR_SPECIES = ["lion", "cheetah"];
+  const COMPANION_SPECIES = ["dog"];
+  const BEAST_SPECIES = PREDATOR_SPECIES.concat(COMPANION_SPECIES);
+  const ANIMAL_ROLE = {};
+  for (const s of ANIMAL_SPECIES) ANIMAL_ROLE[s] = "prey";
+  for (const s of PREDATOR_SPECIES) ANIMAL_ROLE[s] = "predator";
+  for (const s of COMPANION_SPECIES) ANIMAL_ROLE[s] = "companion";
+
+  function animalSpeedFor(species) {
+    if (species === "cheetah") return ANIMAL_SPEED * 2.2;
+    if (species === "lion") return ANIMAL_SPEED * 1.4;
+    if (species === "dog") return ANIMAL_SPEED * 1.3;
+    return ANIMAL_SPEED;
+  }
 
   function makeAnimal(x, y, species) {
     return addEntity({
@@ -521,6 +535,11 @@
       if (state.entities.filter(e => e.kind === "animal").length >= ANIMAL_CAP) { if (!silent) toast("動物數量已達上限"); return; }
       makeAnimal(tx, ty);
       if (!silent) toast("🐇 一隻動物誕生了");
+    } else if (tool === "spawn-beast") {
+      if (state.entities.filter(e => e.kind === "animal").length >= ANIMAL_CAP) { if (!silent) toast("動物數量已達上限"); return; }
+      const species = choice(BEAST_SPECIES);
+      makeAnimal(tx, ty, species);
+      if (!silent) toast(species === "dog" ? "🐕 一隻狗跑了過來" : "🦁 一頭猛獸降臨");
     } else if (tool === "spawn-man") {
       if (state.entities.filter(e => e.kind === "human").length >= popCap()) { if (!silent) toast("人口已達上限"); return; }
       makeHuman(tx, ty, "m");
@@ -694,7 +713,11 @@
 
   function tickAnimals() {
     const animals = state.entities.filter(e => e.kind === "animal");
+    const humans = state.entities.filter(e => e.kind === "human");
+
     for (const a of animals) {
+      const role = ANIMAL_ROLE[a.species];
+
       if (a.panicTicks > 0) {
         a.panicTicks--;
         if (dist2(a, { x: a.moveTX, y: a.moveTY }) < 0.3) {
@@ -703,15 +726,46 @@
         }
         continue;
       }
-      if (a.wanderCd <= 0) {
-        const spot = findLandNear(Math.round(a.x + randRange(-4, 4)), Math.round(a.y + randRange(-4, 4)), 3);
-        if (spot) { a.moveTX = spot.x; a.moveTY = spot.y; }
-        a.wanderCd = randInt(4, 9);
-      } else a.wanderCd--;
+
+      if (role === "predator") {
+        let prey = null, bestD = SENSE_RADIUS * SENSE_RADIUS;
+        for (const e of animals) {
+          if (ANIMAL_ROLE[e.species] !== "prey") continue;
+          const d = dist2(a, e);
+          if (d < bestD) { bestD = d; prey = e; }
+        }
+        if (prey) {
+          a.moveTX = prey.x; a.moveTY = prey.y;
+          if (dist2(a, prey) < 0.4) prey.dead = true;
+        } else if (a.wanderCd <= 0) {
+          const spot = findLandNear(Math.round(a.x + randRange(-5, 5)), Math.round(a.y + randRange(-5, 5)), 3);
+          if (spot) { a.moveTX = spot.x; a.moveTY = spot.y; }
+          a.wanderCd = randInt(4, 9);
+        } else a.wanderCd--;
+      } else if (role === "companion") {
+        if (a.wanderCd <= 0) {
+          let cx = a.x, cy = a.y, range = 5;
+          let nearest = null, bestD = 12 * 12;
+          for (const h of humans) {
+            const d = dist2(a, h);
+            if (d < bestD) { bestD = d; nearest = h; }
+          }
+          if (nearest) { cx = nearest.x; cy = nearest.y; range = 4; }
+          const spot = findLandNear(Math.round(cx + randRange(-range, range)), Math.round(cy + randRange(-range, range)), 3);
+          if (spot) { a.moveTX = spot.x; a.moveTY = spot.y; }
+          a.wanderCd = randInt(4, 9);
+        } else a.wanderCd--;
+      } else {
+        if (a.wanderCd <= 0) {
+          const spot = findLandNear(Math.round(a.x + randRange(-4, 4)), Math.round(a.y + randRange(-4, 4)), 3);
+          if (spot) { a.moveTX = spot.x; a.moveTY = spot.y; }
+          a.wanderCd = randInt(4, 9);
+        } else a.wanderCd--;
+      }
 
       if (a.breedCd <= 0 && animals.length < ANIMAL_CAP) {
         for (const other of animals) {
-          if (other === a) continue;
+          if (other === a || ANIMAL_ROLE[other.species] !== role) continue;
           if (dist2(a, other) <= 4 && rand() < 0.15) {
             const spot = findLandNear(Math.round(a.x), Math.round(a.y), 2);
             if (spot) { makeAnimal(spot.x, spot.y, choice([a.species, other.species])); a.breedCd = randInt(25, 45); other.breedCd = randInt(25, 45); }
@@ -725,7 +779,7 @@
   function nearestFoodForHuman(h) {
     let best = null, bestD = SENSE_RADIUS * SENSE_RADIUS, bestIsFarm = false;
     for (const e of state.entities) {
-      if ((e.kind === "tree" && e.stage === 2 && e.hasFruit) || e.kind === "animal" || e.kind === "fish") {
+      if ((e.kind === "tree" && e.stage === 2 && e.hasFruit) || (e.kind === "animal" && ANIMAL_ROLE[e.species] === "prey") || e.kind === "fish") {
         const d = dist2(h, e);
         if (d < bestD) { bestD = d; best = e; bestIsFarm = false; }
       }
@@ -966,11 +1020,11 @@
     tickWisdomAndTech(humans);
   }
 
-  const MOVE_SPEED = { human: HUMAN_SPEED, animal: ANIMAL_SPEED, fish: FISH_SPEED, whale: WHALE_SPEED };
+  const MOVE_SPEED = { human: HUMAN_SPEED, fish: FISH_SPEED, whale: WHALE_SPEED };
 
   function moveEntitiesStep(dtFactor) {
     for (const e of state.entities) {
-      const base = MOVE_SPEED[e.kind];
+      const base = e.kind === "animal" ? animalSpeedFor(e.species) : MOVE_SPEED[e.kind];
       if (!base) continue;
       const speed = base * (e.panicTicks > 0 ? PANIC_SPEED_MUL : 1);
       const dx = e.moveTX - e.x, dy = e.moveTY - e.y;
@@ -1176,6 +1230,31 @@
       ctx.beginPath(); ctx.arc(px, py + 1, 2, 0, 7); ctx.fill();
       ctx.fillStyle = "#4a3f38";
       ctx.beginPath(); ctx.arc(px + 3, py - 0.4, 1.1, 0, 7); ctx.fill();
+    } else if (species === "lion") {
+      ctx.fillStyle = "#a9762f";
+      ctx.beginPath(); ctx.arc(px + 2.6, py - 1.2, 3.1, 0, 7); ctx.fill();
+      ctx.fillStyle = "#cf9a3f";
+      ctx.beginPath(); ctx.ellipse(px, py, 3.8, 2.6, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 2.8, py - 1.4, 1.7, 0, 7); ctx.fill();
+      ctx.fillStyle = "#5a3e1b";
+      ctx.beginPath(); ctx.arc(px + 3.7, py - 1.3, 0.5, 0, 7); ctx.fill();
+    } else if (species === "cheetah") {
+      ctx.fillStyle = "#e0c07a";
+      ctx.beginPath(); ctx.ellipse(px, py, 3.6, 2.1, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 3, py - 1.2, 1.5, 0, 7); ctx.fill();
+      ctx.fillStyle = "#4a3a28";
+      for (const [ox, oy] of [[-2, -0.6], [-0.4, 0.6], [1.2, -0.8], [2, 0.6]]) {
+        ctx.beginPath(); ctx.arc(px + ox, py + oy, 0.55, 0, 7); ctx.fill();
+      }
+    } else if (species === "dog") {
+      ctx.fillStyle = "#a5714a";
+      ctx.beginPath(); ctx.ellipse(px, py, 3, 2.1, 0, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(px + 2.5, py - 1.3, 1.5, 0, 7); ctx.fill();
+      ctx.fillStyle = "#7a4f30";
+      ctx.beginPath(); ctx.moveTo(px + 1.8, py - 2.2); ctx.lineTo(px + 1.2, py - 3.6); ctx.lineTo(px + 2.6, py - 2.6); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "#7a4f30";
+      ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.moveTo(px - 3, py); ctx.quadraticCurveTo(px - 4.6, py - 1.8, px - 3.6, py - 3); ctx.stroke();
     } else {
       ctx.fillStyle = "#b98455";
       ctx.beginPath(); ctx.ellipse(px, py, 3.4, 2.4, 0, 0, 7); ctx.fill();
@@ -1407,7 +1486,7 @@
   }
 
   // ----- Ability button UI ---------------------------------------------------
-  const LIFE_TOOLS = ["plant-seed", "spawn-animal", "spawn-man", "spawn-woman", "spawn-fish", "spawn-whale"];
+  const LIFE_TOOLS = ["plant-seed", "spawn-animal", "spawn-beast", "spawn-man", "spawn-woman", "spawn-fish", "spawn-whale"];
   const abilityButtons = Array.from(document.querySelectorAll('button.tool:not([data-tool^="speed-"])'));
   const lifeButtons = abilityButtons.filter(b => LIFE_TOOLS.includes(b.dataset.tool));
 
