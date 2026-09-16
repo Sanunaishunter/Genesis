@@ -82,6 +82,8 @@ canvas#world {
   display: block;
   background: #06101d;
   cursor: crosshair;
+  touch-action: none;
+  user-select: none;
 }
 
 #toast {
@@ -144,8 +146,14 @@ button.tool:active { transform: scale(0.97); }
 button.tool.active {
   background: linear-gradient(180deg, #2a5f94, #1c4a78);
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent) inset;
+  box-shadow: 0 0 10px 1px rgba(79,176,255,0.55), 0 0 0 1px var(--accent) inset;
 }
+button.tool:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  filter: grayscale(0.6);
+}
+button.tool:disabled:hover { background: var(--panel-2); border-color: var(--border); }
 
 .hint {
   margin: 6px 0 0;
@@ -158,6 +166,17 @@ button.tool.active {
   margin: 0;
   font-size: 0.9rem;
   color: var(--accent-2);
+}
+
+.lock-note {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  color: #ffb4b4;
+  background: rgba(255,90,90,0.1);
+  border: 1px solid rgba(255,90,90,0.35);
+  border-radius: 8px;
+  padding: 6px 8px;
+  line-height: 1.4;
 }
 
 @media (max-width: 900px) {

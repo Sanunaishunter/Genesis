@@ -15,7 +15,7 @@
         <span>🧑 人口 <b id="stat-pop">0</b>（<span id="stat-men">0</span>♂ / <span id="stat-women">0</span>♀ / <span id="stat-children">0</span>幼）</span>
         <span>🌳 樹木 <b id="stat-trees">0</b></span>
         <span>🐇 動物 <b id="stat-animals">0</b></span>
-        <span>☀️ 天氣：<b id="stat-weather">晴朗</b></span>
+        <span>🌦️ 天氣：<b id="stat-weather">☀️ 全島晴朗</b></span>
       </div>
     </header>
 
@@ -34,6 +34,7 @@
             <button class="tool" data-tool="weather-storm">⛈️ 風暴</button>
             <button class="tool" data-tool="weather-drought">🏜️ 乾旱</button>
           </div>
+          <p class="hint">選好天氣後，在地圖上點按或按住拖曳，該區域就會出現對應天氣。除了「晴朗」，選中其他天氣時會暫時鎖定造人／種樹等能力。</p>
         </section>
 
         <section>
@@ -44,7 +45,7 @@
             <button class="tool" data-tool="spawn-man">🧔 創造男人</button>
             <button class="tool" data-tool="spawn-woman">👩 創造女人</button>
           </div>
-          <p class="hint">選擇能力後，點擊島上的陸地即可施展。</p>
+          <p class="hint">選擇能力後，在陸地上點按或按住拖曳即可連續施展。天氣鎖定中無法使用。</p>
         </section>
 
         <section>
@@ -59,6 +60,7 @@
         <section id="selected-tool-box">
           <h2>目前能力</h2>
           <p id="selected-tool-label">尚未選擇</p>
+          <p id="lock-note" class="lock-note" hidden>🔒 天氣模式中，請切回「晴朗」才能使用造人／種樹等能力</p>
         </section>
 
         <section>
@@ -66,8 +68,8 @@
           <p class="hint">
             一開始島上空無一物。種下種子會長成樹木並結出果實；
             創造動物與男女後，他們會自己覓食、成長、繁衍與老去。
-            天氣會影響作物生長與居民的生存難度——降雨加速生長，
-            乾旱使人更容易挨餓，風暴則可能摧毀幼苗。
+            天氣現在是「用手指指哪、哪裡就發生」的局部效果：降雨加速當地生長，
+            乾旱使當地居民更容易挨餓，風暴可能摧毀當地幼苗，且會隨時間逐漸消散。
           </p>
         </section>
       </aside>
