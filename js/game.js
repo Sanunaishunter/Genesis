@@ -8,7 +8,7 @@
   const CANVAS_W = COLS * TILE;
   const CANVAS_H = ROWS * TILE;
 
-  const TERRAIN = { WATER: 0, SAND: 1, GRASS: 2, MOUNTAIN: 3 };
+  const TERRAIN = { WATER: 0, SAND: 1, GRASS: 2, MOUNTAIN: 3, RIVER: 4 };
 
   const ADULT_AGE = 16;
   const MAX_AGE = 90;
@@ -59,6 +59,14 @@
   const WISDOM_PER_WORSHIPPER = 0.015;
   const TECH_THRESHOLD = { fire: 40, farming: 120, tribe: 300 };
   const TECH_LABEL = { fire: "🔥用火", farming: "🌾農耕", tribe: "🏘️部落" };
+
+  const MIN_TREES_TO_KEEP = 4;
+  const CHOP_CHANCE_PER_TICK = 0.02;
+  const WOOD_PER_CHOP = 6;
+  const HOUSE_COST = 30;
+  const HOUSE_CAP = 20;
+  const BRIDGE_COST = 20;
+  const DROWN_CHANCE = 0.08; // per tick spent in a river tile with no bridge
 
   // ----- Seeded RNG ---------------------------------------------------------
   function mulberry32(seed) {
@@ -115,7 +123,7 @@
         if (value > 0.25) type = TERRAIN.GRASS;
         else if (value > 0) type = TERRAIN.SAND;
         else type = TERRAIN.WATER;
-        row.push({ type, shade: rand() * 2 - 1, cave: false });
+        row.push({ type, shade: rand() * 2 - 1, cave: false, bridge: false });
       }
       tiles.push(row);
     }
@@ -147,7 +155,14 @@
     const t = tiles[ty][tx];
     if (t.type === TERRAIN.GRASS || t.type === TERRAIN.SAND) return true;
     if (t.type === TERRAIN.MOUNTAIN && t.cave) return true;
+    if (t.type === TERRAIN.RIVER && t.bridge) return true;
     return false;
+  }
+
+  function isDangerousRiver(xf, yf) {
+    const tx = tileIndex(xf, COLS), ty = tileIndex(yf, ROWS);
+    const t = state.tiles[ty][tx];
+    return t.type === TERRAIN.RIVER && !t.bridge;
   }
 
   // ----- Game state ----------------------------------------------------------
@@ -163,6 +178,7 @@
     seasonTick: 0,
     wisdom: 0,
     tech: { fire: false, farming: false, tribe: false },
+    wood: 0,
     entities: [], // trees, animals, humans
     day: 0,
     speed: "normal",
@@ -327,6 +343,17 @@
     }
   }
 
+  function paintRiver(tx, ty) {
+    if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return false;
+    const t = state.tiles[ty][tx];
+    if (t.type !== TERRAIN.GRASS && t.type !== TERRAIN.SAND) return false;
+    t.type = TERRAIN.RIVER;
+    t.bridge = false;
+    const tree = treeAt(tx, ty);
+    if (tree) tree.dead = true;
+    return true;
+  }
+
   function triggerEarthquake(tx, ty) {
     state.shakeTicks = SHAKE_DURATION;
     const epi = { x: tx, y: ty };
@@ -395,6 +422,11 @@
     if (tool === "fire") {
       igniteFire(tx, ty, FIRE_BRUSH_RADIUS);
       if (!silent) toast("🔥 烈焰燃起");
+      return;
+    }
+    if (tool === "river") {
+      const ok = paintRiver(tx, ty);
+      if (!silent) toast(ok ? "🌊 河道向前延伸" : "這裡無法挖掘河道");
       return;
     }
 
@@ -509,6 +541,13 @@
     }
   }
 
+  function tickRiverHazard() {
+    for (const e of state.entities) {
+      if (e.kind === "tree" || e.isSage) continue;
+      if (isDangerousRiver(e.x, e.y) && rand() < DROWN_CHANCE) e.dead = true;
+    }
+  }
+
   function tickTrees() {
     for (const e of state.entities) {
       if (e.kind !== "tree") continue;
@@ -592,9 +631,67 @@
     if (!state.tech.tribe && state.wisdom >= TECH_THRESHOLD.tribe) { state.tech.tribe = true; toast("🏘️ 人類建立了部落！"); }
   }
 
+  function findBridgeCandidate(humans) {
+    if (humans.length === 0) return null;
+    let cx = 0, cy = 0;
+    for (const h of humans) { cx += h.x; cy += h.y; }
+    cx /= humans.length; cy /= humans.length;
+    let best = null, bestD = Infinity;
+    for (let y = 0; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        const t = state.tiles[y][x];
+        if (t.type !== TERRAIN.RIVER || t.bridge) continue;
+        const neighborsLand = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => isLand(state.tiles, x + dx, y + dy));
+        if (!neighborsLand) continue;
+        const d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+        if (d < bestD) { bestD = d; best = { x, y }; }
+      }
+    }
+    return best;
+  }
+
+  function nearestChoppableTree(h) {
+    let target = null, bestD = SENSE_RADIUS * SENSE_RADIUS;
+    for (const e of state.entities) {
+      if (e.kind === "tree" && e.stage === 2) {
+        const d = dist2(h, e);
+        if (d < bestD) { bestD = d; target = e; }
+      }
+    }
+    return target;
+  }
+
+  function tickCivilizationBuildings(humans) {
+    if (!state.tech.tribe) return;
+
+    if (state.wood >= HOUSE_COST && state.entities.filter(e => e.kind === "house").length < HOUSE_CAP) {
+      let sx = 0, sy = 0, n = 0;
+      for (const h of humans) { if (!h.isSage) { sx += h.x; sy += h.y; n++; } }
+      if (n > 0) {
+        const cx = sx / n, cy = sy / n;
+        const spot = findLandNear(Math.round(cx + randRange(-3, 3)), Math.round(cy + randRange(-3, 3)), 3);
+        if (spot && !treeAt(spot.x, spot.y)) {
+          addEntity({ kind: "house", x: spot.x, y: spot.y });
+          state.wood -= HOUSE_COST;
+          toast("🏠 部落蓋起了一座房子");
+        }
+      }
+    }
+
+    if (state.wood >= BRIDGE_COST) {
+      const spot = findBridgeCandidate(humans);
+      if (spot) {
+        state.tiles[spot.y][spot.x].bridge = true;
+        state.wood -= BRIDGE_COST;
+        toast("🌉 部落搭起了一座橋");
+      }
+    }
+  }
+
   function tickHumans() {
     const humans = state.entities.filter(e => e.kind === "human");
     const cap = popCap();
+    const canChop = state.tech.tribe && state.entities.filter(e => e.kind === "tree").length > MIN_TREES_TO_KEEP;
 
     for (const h of humans) {
       if (h.isSage) {
@@ -636,6 +733,8 @@
         h.state = "seekFood";
       } else if (isAdult && h.hunger < MATE_HUNGER_MAX && h.mateCd <= 0 && humans.length < cap) {
         h.state = "seekMate";
+      } else if (isAdult && canChop && (h.state === "chopWood" || rand() < CHOP_CHANCE_PER_TICK)) {
+        h.state = "chopWood";
       } else {
         h.state = "wander";
       }
@@ -678,6 +777,20 @@
         }
       }
 
+      if (h.state === "chopWood") {
+        const target = nearestChoppableTree(h);
+        if (target) {
+          h.moveTX = target.x; h.moveTY = target.y;
+          if (dist2(h, target) < 0.4) {
+            target.dead = true;
+            state.wood += WOOD_PER_CHOP;
+            h.state = "wander";
+          }
+        } else {
+          h.state = "wander";
+        }
+      }
+
       if (h.state === "wander") {
         if (h.wanderCd <= 0) {
           const spot = findLandNear(Math.round(h.x + randRange(-5, 5)), Math.round(h.y + randRange(-5, 5)), 3);
@@ -687,12 +800,13 @@
       }
     }
 
+    tickCivilizationBuildings(humans);
     tickWisdomAndTech(humans);
   }
 
   function moveEntitiesStep(dtFactor) {
     for (const e of state.entities) {
-      if (e.kind === "tree") continue;
+      if (e.kind !== "human" && e.kind !== "animal") continue;
       const base = e.kind === "human" ? HUMAN_SPEED : ANIMAL_SPEED;
       const speed = base * (e.panicTicks > 0 ? PANIC_SPEED_MUL : 1);
       const dx = e.moveTX - e.x, dy = e.moveTY - e.y;
@@ -715,6 +829,7 @@
     tickSeason();
     tickWeatherDecay();
     tickFire();
+    tickRiverHazard();
     tickTrees();
     tickAnimals();
     tickHumans();
@@ -730,6 +845,7 @@
     [TERRAIN.SAND]: "#d8c07a",
     [TERRAIN.GRASS]: "#3f8f4f",
     [TERRAIN.MOUNTAIN]: "#8a8175",
+    [TERRAIN.RIVER]: "#2f7fc1",
   };
   const WEATHER_TINT_COLOR = {
     rain: [70, 110, 190],
@@ -755,6 +871,9 @@
         if (tile.type === TERRAIN.WATER) {
           const shimmer = Math.sin(ts * 0.0016 + x * 0.55 + y * 0.4) * 9 + tile.shade * 6;
           ctx.fillStyle = adjustColor(TERRAIN_COLOR[TERRAIN.WATER], shimmer);
+        } else if (tile.type === TERRAIN.RIVER) {
+          const shimmer = Math.sin(ts * 0.0022 + x * 0.4 + y * 0.9) * 10 + tile.shade * 6;
+          ctx.fillStyle = adjustColor(TERRAIN_COLOR[TERRAIN.RIVER], shimmer);
         } else if (tile.type === TERRAIN.SAND) {
           ctx.fillStyle = adjustColor(TERRAIN_COLOR[TERRAIN.SAND], tile.shade * 10);
         } else if (tile.type === TERRAIN.MOUNTAIN) {
@@ -781,6 +900,18 @@
             ctx.beginPath();
             ctx.ellipse(wx + TILE / 2, wy + TILE * 0.65, TILE * 0.28, TILE * 0.22, 0, 0, Math.PI * 2);
             ctx.fill();
+          }
+        }
+        if (tile.type === TERRAIN.RIVER && tile.bridge) {
+          ctx.fillStyle = "#8a5a2f";
+          ctx.fillRect(wx + 1, wy + 3, TILE - 2, TILE - 6);
+          ctx.strokeStyle = "rgba(0,0,0,0.25)";
+          ctx.lineWidth = 1;
+          for (let plank = 3; plank < TILE - 2; plank += 4) {
+            ctx.beginPath();
+            ctx.moveTo(wx + plank, wy + 3);
+            ctx.lineTo(wx + plank, wy + TILE - 3);
+            ctx.stroke();
           }
         }
 
@@ -833,14 +964,31 @@
   }
 
   function drawEntities() {
-    const trees = [], animals = [], humans = [];
+    const trees = [], animals = [], humans = [], houses = [];
     for (const e of state.entities) {
       if (e.kind === "tree") trees.push(e);
       else if (e.kind === "animal") animals.push(e);
-      else humans.push(e);
+      else if (e.kind === "human") humans.push(e);
+      else if (e.kind === "house") houses.push(e);
     }
     const byY = (a, b) => a.y - b.y;
-    trees.sort(byY); animals.sort(byY); humans.sort(byY);
+    trees.sort(byY); animals.sort(byY); humans.sort(byY); houses.sort(byY);
+
+    for (const e of houses) {
+      const px = e.x * TILE + TILE / 2, py = e.y * TILE + TILE / 2;
+      drawShadow(px, py, 6, 2.2);
+      ctx.fillStyle = "#c9a06b";
+      ctx.fillRect(px - 5, py - 1, 10, 6);
+      ctx.fillStyle = "#8a4b3a";
+      ctx.beginPath();
+      ctx.moveTo(px - 6.5, py - 1);
+      ctx.lineTo(px, py - 8);
+      ctx.lineTo(px + 6.5, py - 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#5a3722";
+      ctx.fillRect(px - 1.5, py + 1, 3, 4);
+    }
 
     for (const e of trees) {
       const px = e.x * TILE + TILE / 2, py = e.y * TILE + TILE / 2;
@@ -986,6 +1134,9 @@
 
     const techParts = ["fire", "farming", "tribe"].filter(k => state.tech[k]).map(k => TECH_LABEL[k]);
     document.getElementById("stat-tech").textContent = techParts.length ? techParts.join(" ") : "尚未開化";
+
+    document.getElementById("stat-wood").textContent = Math.floor(state.wood);
+    document.getElementById("stat-houses").textContent = state.entities.filter(e => e.kind === "house").length;
   }
 
   // ----- Ability button UI ---------------------------------------------------
