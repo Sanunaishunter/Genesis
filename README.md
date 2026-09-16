@@ -25,4 +25,15 @@ python3 -m http.server 8000
 
 - `index.html`：版面與 UI
 - `style.css`：介面樣式
-- `js/game.js`：地形生成、天神能力、居民 AI 與畫面繪製的核心邏輯（純原生 JS，無外部相依）
+- `js/`：核心邏輯，以原生 ES modules 拆分（純原生 JS，無建置工具、無外部相依）
+  - `constants.js`：所有可調整的數值設定
+  - `rng.js`：種子亂數產生器
+  - `utils.js`：通用數學／顏色工具函式
+  - `toast.js`：畫面提示訊息
+  - `state.js`：地形生成與共用的遊戲狀態、空間查詢輔助函式
+  - `entities.js`：樹木／動物／人類／聖人／魚／鯨魚等實體的建立函式
+  - `tech.js`：科技解鎖後的數值調整（人口上限、繁衍冷卻、果實週期）
+  - `abilities.js`：天神能力（天氣、天災、造山、造河、召喚聖人等）
+  - `simulation.js`：每個模擬時刻的邏輯（成長、飢餓、AI 決策、部落建設等）
+  - `render.js`：Canvas 繪製
+  - `ui.js`：進入點——DOM 綁定、輸入事件、主迴圈

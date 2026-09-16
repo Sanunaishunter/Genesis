@@ -1,0 +1,59 @@
+import { ADULT_AGE, ANIMAL_SPECIES } from "./constants.js";
+import { choice, randInt, randRange } from "./rng.js";
+import { state, addEntity } from "./state.js";
+
+// ----- Entity factories -----------------------------------------------------
+export function makeTree(x, y) {
+  return addEntity({
+    kind: "tree", x, y, stage: 0, growTimer: 0,
+    hasFruit: false, fruitTimer: 0, lightningHits: 0,
+  });
+}
+
+export function makeAnimal(x, y, species) {
+  return addEntity({
+    kind: "animal", species: species || choice(ANIMAL_SPECIES), x, y,
+    moveTX: x, moveTY: y, wanderCd: 0,
+    breedCd: randInt(10, 30), panicTicks: 0,
+  });
+}
+
+export function makeHuman(x, y, gender, age) {
+  return addEntity({
+    kind: "human", x, y, gender,
+    age: age ?? ADULT_AGE,
+    hunger: randRange(10, 30),
+    state: "wander",
+    moveTX: x, moveTY: y, wanderCd: 0,
+    starveTicks: 0,
+    mateCd: randInt(0, 15),
+    panicTicks: 0,
+    isSage: false,
+  });
+}
+
+export function makeSage(x, y) {
+  return addEntity({
+    kind: "human", x, y, gender: choice(["m", "f"]),
+    age: ADULT_AGE, hunger: 0, state: "sage",
+    moveTX: x, moveTY: y, wanderCd: randInt(30, 60),
+    starveTicks: 0, mateCd: 999999, panicTicks: 0, isSage: true,
+    teachCooldown: 0,
+  });
+}
+
+export function makeFish(x, y) {
+  return addEntity({ kind: "fish", x, y, moveTX: x, moveTY: y, wanderCd: 0 });
+}
+
+export function makeWhale(x, y) {
+  return addEntity({ kind: "whale", x, y, moveTX: x, moveTY: y, wanderCd: 0, spoutCd: randInt(20, 50) });
+}
+
+export function treeAt(tx, ty) {
+  return state.entities.find(e => e.kind === "tree" && Math.round(e.x) === tx && Math.round(e.y) === ty);
+}
+
+export function sageAt(tx, ty) {
+  return state.entities.find(e => e.isSage && Math.round(e.x) === tx && Math.round(e.y) === ty);
+}
