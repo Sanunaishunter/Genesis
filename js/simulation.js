@@ -804,15 +804,22 @@ function tickApexPredators() {
 
   for (const t of state.entities) {
     if (t.kind !== "animal" || t.species !== "trex" || t.dead) continue;
-    if (currentPopCount(t.huntCategory) <= t.cullFloor) {
-      t.dead = true;
-      addEffect({ type: "smoke", x: t.x, y: t.y, life: 40, maxLife: 40 });
-      toast("🦖 暴龍完成了狩獵，離開了這座島");
-      continue;
+    if (t.huntCategory != null) {
+      // Population-control T-Rex: leaves once its target category is back under control.
+      if (currentPopCount(t.huntCategory) <= t.cullFloor) {
+        t.dead = true;
+        addEffect({ type: "smoke", x: t.x, y: t.y, life: 40, maxLife: 40 });
+        toast("🦖 暴龍完成了狩獵，離開了這座島");
+        continue;
+      }
     }
-    const candidates = t.huntCategory === "human"
-      ? state.entities.filter(e => e.kind === "human" && !e.isSage && !e.isEvil && !e.dead)
-      : state.entities.filter(e => e.kind === "animal" && !e.dead && ANIMAL_ROLE[e.species] === t.huntCategory);
+    const candidates = t.huntCategory == null
+      ? state.entities.filter(e =>
+          (e.kind === "animal" && !e.dead && e.species !== "trex" && ["predator", "companion", "prey"].includes(ANIMAL_ROLE[e.species])) ||
+          (e.kind === "human" && !e.dead && !e.isSage && !e.isEvil))
+      : t.huntCategory === "human"
+        ? state.entities.filter(e => e.kind === "human" && !e.isSage && !e.isEvil && !e.dead)
+        : state.entities.filter(e => e.kind === "animal" && !e.dead && ANIMAL_ROLE[e.species] === t.huntCategory);
     let target = null, bestD = Infinity;
     for (const c of candidates) {
       const d = dist2(t, c);

@@ -12,7 +12,7 @@ import { rand, randRange, choice } from "./rng.js";
 import { clamp, dist2 } from "./utils.js";
 import { toast } from "./toast.js";
 import { state, addEffect, isLand, isOcean, findLandNear, findNearestShelter } from "./state.js";
-import { makeTree, makeAnimal, makeHuman, makeSage, makeEvil, makeFish, makeWhale, treeAt, sageAt, evilAt } from "./entities.js";
+import { makeTree, makeAnimal, makeHuman, makeSage, makeEvil, makeFish, makeWhale, makeTrex, treeAt, sageAt, evilAt } from "./entities.js";
 import { popCap } from "./tech.js";
 
 export function setSpeed(s) {
@@ -244,5 +244,8 @@ export function applyGodAction(tx, ty, opts) {
   } else if (tool === "mountain") {
     paintMountain(tx, ty);
     if (!silent) toast("⛰️ 山岳隆起，中心留下了一個洞穴");
+  } else if (tool === "spawn-trex") {
+    makeTrex(tx, ty);
+    if (!silent) toast("🦖 一隻暴龍降臨，開始四處獵殺");
   }
 }
