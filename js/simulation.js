@@ -10,9 +10,11 @@ import {
   HOUSE_COST, HOUSE_CAP, BRIDGE_COST,
   EVIL_CORRUPT_RADIUS, CORRUPTION_CHANCE_PER_TICK,
   RAID_KILL_CHANCE, HUNTER_KILL_CHANCE, SHAMAN_HEAL_AMOUNT, SHAMAN_CURE_CHANCE, COMBAT_TIER_BONUS,
+  PREDATOR_HUMAN_KILL_CHANCE, HUNTER_BEAST_KILL_CHANCE,
   HUNTER_RATIO, SHAMAN_RATIO, PROFESSION_PROMOTE_CHANCE,
   WALL_COST, WALL_RING_COUNT, WALL_RADIUS, WALL_PROTECT_MUL,
   TRIBE_GRACE_TICKS, BIG_TREE_GROW_TICKS, BIG_TREE_WOOD_BONUS,
+  POP_EXPLOSION_THRESHOLD, POP_EXPLOSION_CULL_FRACTION, POP_CATEGORY_LABEL,
 } from "./constants.js";
 import { rand, randRange, randInt, choice } from "./rng.js";
 import { dist2 } from "./utils.js";
@@ -21,7 +23,7 @@ import {
   state, addEntity, addEffect, isLand, isDangerousRiver, isOnFire, isSheltered,
   weatherAt, findLandNear, findWaterNear,
 } from "./state.js";
-import { makeAnimal, makeHuman, treeAt } from "./entities.js";
+import { makeAnimal, makeHuman, makeTrex, treeAt } from "./entities.js";
 import { popCap, mateCooldown, fruitNeedTicks, techTier, evilTier } from "./tech.js";
 
 function weatherGrowMul(type) {
@@ -195,15 +197,30 @@ function tickAnimals() {
     }
 
     if (role === "predator") {
-      let prey = null, bestD = SENSE_RADIUS * SENSE_RADIUS;
+      let prey = null, bestD = SENSE_RADIUS * SENSE_RADIUS, preyIsHuman = false;
       for (const e of animals) {
         if (ANIMAL_ROLE[e.species] !== "prey") continue;
         const d = dist2(a, e);
-        if (d < bestD) { bestD = d; prey = e; }
+        if (d < bestD) { bestD = d; prey = e; preyIsHuman = false; }
+      }
+      for (const h of humans) {
+        if (h.isSage || h.isEvil) continue; // leaders are immune, like other hazards
+        const d = dist2(a, h);
+        if (d < bestD) { bestD = d; prey = h; preyIsHuman = true; }
       }
       if (prey) {
         a.moveTX = prey.x; a.moveTY = prey.y;
-        if (dist2(a, prey) < 0.4) prey.dead = true;
+        if (dist2(a, prey) < 0.4) {
+          if (preyIsHuman) {
+            if (rand() < PREDATOR_HUMAN_KILL_CHANCE) {
+              prey.dead = true;
+              addEffect({ type: "skeleton", x: prey.x, y: prey.y, life: 28, maxLife: 28 });
+              toast("🦁 一頭猛獸攻擊了一位村民");
+            }
+          } else {
+            prey.dead = true;
+          }
+        }
       } else if (a.wanderCd <= 0) {
         const spot = findLandNear(Math.round(a.x + randRange(-5, 5)), Math.round(a.y + randRange(-5, 5)), 3);
         if (spot) { a.moveTX = spot.x; a.moveTY = spot.y; }
@@ -431,7 +448,8 @@ function tickWalls() {
 
 function tickProfessions() {
   const evilPresent = state.tribes.some(t => t.kind === "evil");
-  if (!evilPresent) return;
+  const beastPresent = state.entities.some(e => e.kind === "animal" && !e.dead && ANIMAL_ROLE[e.species] === "predator");
+  if (!evilPresent && !beastPresent) return;
   for (const tribe of state.tribes) {
     if (tribe.kind !== "good") continue;
     const alive = tribe.members.filter(m => !m.dead);
@@ -643,18 +661,24 @@ function tickHumans() {
     }
 
     if (h.state === "patrol") {
-      let target = null, bestD = SENSE_RADIUS * SENSE_RADIUS;
+      let target = null, bestD = SENSE_RADIUS * SENSE_RADIUS, targetIsBeast = false;
       for (const o of humans) {
         if (o.dead || (!o.corrupted && !o.isEvil)) continue;
         const d = dist2(h, o);
-        if (d < bestD) { bestD = d; target = o; }
+        if (d < bestD) { bestD = d; target = o; targetIsBeast = false; }
+      }
+      for (const beast of state.entities) {
+        if (beast.kind !== "animal" || beast.dead || ANIMAL_ROLE[beast.species] !== "predator") continue;
+        const d = dist2(h, beast);
+        if (d < bestD) { bestD = d; target = beast; targetIsBeast = true; }
       }
       if (target) {
         h.moveTX = target.x; h.moveTY = target.y;
-        if (dist2(h, target) < 0.5 && rand() < HUNTER_KILL_CHANCE * (1 + techTier() * COMBAT_TIER_BONUS)) {
+        const chance = (targetIsBeast ? HUNTER_BEAST_KILL_CHANCE : HUNTER_KILL_CHANCE) * (1 + techTier() * COMBAT_TIER_BONUS);
+        if (dist2(h, target) < 0.5 && rand() < chance) {
           target.dead = true;
-          addEffect({ type: "skeleton", x: target.x, y: target.y, life: 28, maxLife: 28 });
-          toast("🏹 獵人擊退了一名黑化的敵人");
+          addEffect({ type: targetIsBeast ? "scorch" : "skeleton", x: target.x, y: target.y, life: 28, maxLife: 28 });
+          toast(targetIsBeast ? "🏹 獵人獵殺了一頭猛獸" : "🏹 獵人擊退了一名黑化的敵人");
         }
       } else if (h.wanderCd <= 0) {
         const leader = humans.find(l => l.id === h.tribeId);
@@ -745,6 +769,69 @@ export function updateEffects() {
   state.effects = state.effects.filter(ef => ef.life > 0);
 }
 
+function currentPopCount(category) {
+  if (category === "human") return state.entities.filter(e => e.kind === "human" && !e.isSage && !e.isEvil && !e.dead).length;
+  return state.entities.filter(e => e.kind === "animal" && !e.dead && ANIMAL_ROLE[e.species] === category).length;
+}
+
+function tickApexPredators() {
+  const huntedCategories = new Set(
+    state.entities.filter(e => e.kind === "animal" && e.species === "trex" && !e.dead).map(t => t.huntCategory)
+  );
+  for (const category of Object.keys(POP_EXPLOSION_THRESHOLD)) {
+    if (huntedCategories.has(category)) continue;
+    const count = currentPopCount(category);
+    if (count > POP_EXPLOSION_THRESHOLD[category]) {
+      const cullFloor = Math.max(1, Math.floor(count * POP_EXPLOSION_CULL_FRACTION));
+      // Cull the bulk of the excess instantly: a physically-chasing T-Rex could never
+      // out-pace uncapped exponential breeding, so the population correction itself
+      // has to be immediate. One straggler is left above the floor for the T-Rex to
+      // visibly hunt down before it leaves.
+      const pool = category === "human"
+        ? state.entities.filter(e => e.kind === "human" && !e.isSage && !e.isEvil && !e.dead)
+        : state.entities.filter(e => e.kind === "animal" && !e.dead && ANIMAL_ROLE[e.species] === category);
+      let toKill = Math.max(0, pool.length - (cullFloor + 1));
+      while (toKill > 0 && pool.length > 0) {
+        const idx = Math.floor(rand() * pool.length);
+        pool.splice(idx, 1)[0].dead = true;
+        toKill--;
+      }
+      const spot = findLandNear(randInt(0, COLS - 1), randInt(0, ROWS - 1), 30) || { x: Math.floor(COLS / 2), y: Math.floor(ROWS / 2) };
+      makeTrex(spot.x, spot.y, category, cullFloor);
+      toast("🦖 一隻暴龍降臨，把氾濫成災的" + POP_CATEGORY_LABEL[category] + "獵殺到只剩十分之一");
+    }
+  }
+
+  for (const t of state.entities) {
+    if (t.kind !== "animal" || t.species !== "trex" || t.dead) continue;
+    if (currentPopCount(t.huntCategory) <= t.cullFloor) {
+      t.dead = true;
+      addEffect({ type: "smoke", x: t.x, y: t.y, life: 40, maxLife: 40 });
+      toast("🦖 暴龍完成了狩獵，離開了這座島");
+      continue;
+    }
+    const candidates = t.huntCategory === "human"
+      ? state.entities.filter(e => e.kind === "human" && !e.isSage && !e.isEvil && !e.dead)
+      : state.entities.filter(e => e.kind === "animal" && !e.dead && ANIMAL_ROLE[e.species] === t.huntCategory);
+    let target = null, bestD = Infinity;
+    for (const c of candidates) {
+      const d = dist2(t, c);
+      if (d < bestD) { bestD = d; target = c; }
+    }
+    if (target) {
+      t.moveTX = target.x; t.moveTY = target.y;
+      if (dist2(t, target) < 0.5) {
+        target.dead = true;
+        addEffect({ type: "skeleton", x: target.x, y: target.y, life: 28, maxLife: 28 });
+      }
+    } else if (t.wanderCd <= 0) {
+      const spot = findLandNear(Math.round(t.x + randRange(-6, 6)), Math.round(t.y + randRange(-6, 6)), 4);
+      if (spot) { t.moveTX = spot.x; t.moveTY = spot.y; }
+      t.wanderCd = randInt(4, 8);
+    } else t.wanderCd--;
+  }
+}
+
 export function simulateDay() {
   state.day++;
   tickSeason();
@@ -757,5 +844,6 @@ export function simulateDay() {
   tickSeaLife();
   tickHouses();
   tickHumans();
+  tickApexPredators();
   state.entities = state.entities.filter(e => !e.dead);
 }

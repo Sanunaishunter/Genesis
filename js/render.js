@@ -194,6 +194,20 @@ function drawAnimalBody(species, px, py) {
     for (const [ox, oy] of [[-2, -0.6], [-0.4, 0.6], [1.2, -0.8], [2, 0.6]]) {
       ctx.beginPath(); ctx.arc(px + ox, py + oy, 0.55, 0, 7); ctx.fill();
     }
+  } else if (species === "trex") {
+    ctx.fillStyle = "#3d5530";
+    ctx.beginPath(); ctx.moveTo(px - 6, py); ctx.lineTo(px - 11.5, py + 1.6); ctx.lineTo(px - 6, py + 2.2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#4f6b3a";
+    ctx.beginPath(); ctx.ellipse(px, py, 7.2, 4.4, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#3d5530";
+    ctx.fillRect(px - 2, py + 2.6, 1.8, 3.6);
+    ctx.fillRect(px + 1.5, py + 2.6, 1.8, 3.6);
+    ctx.fillStyle = "#5a7a45";
+    ctx.beginPath(); ctx.ellipse(px + 6.4, py - 3.6, 3.2, 2.6, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#e8dcc0";
+    ctx.beginPath(); ctx.moveTo(px + 8.4, py - 2.6); ctx.lineTo(px + 10, py - 1.7); ctx.lineTo(px + 8.4, py - 0.9); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#d94f3b";
+    ctx.beginPath(); ctx.arc(px + 7.6, py - 4.6, 0.7, 0, 7); ctx.fill();
   } else if (species === "dog") {
     ctx.fillStyle = "#a5714a";
     ctx.beginPath(); ctx.ellipse(px, py, 3, 2.1, 0, 0, 7); ctx.fill();
@@ -330,7 +344,8 @@ function drawEntities() {
 
   for (const a of animals) {
     const px = a.x * TILE + TILE / 2, py = a.y * TILE + TILE / 2;
-    drawShadow(px, py, 3.4, 1.3);
+    const isTrex = a.species === "trex";
+    drawShadow(px, py, isTrex ? 7 : 3.4, isTrex ? 2.6 : 1.3);
     drawAnimalBody(a.species, px, py);
   }
 

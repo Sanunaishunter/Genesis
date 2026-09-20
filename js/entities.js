@@ -58,6 +58,15 @@ export function makeEvil(x, y) {
   });
 }
 
+export function makeTrex(x, y, huntCategory, cullFloor) {
+  return addEntity({
+    kind: "animal", species: "trex", x, y,
+    moveTX: x, moveTY: y, wanderCd: 0,
+    breedCd: Infinity, panicTicks: 0,
+    huntCategory, cullFloor,
+  });
+}
+
 export function makeFish(x, y) {
   return addEntity({ kind: "fish", x, y, moveTX: x, moveTY: y, wanderCd: 0 });
 }

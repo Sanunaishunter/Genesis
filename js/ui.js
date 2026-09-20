@@ -38,6 +38,7 @@ function updateStats() {
   document.getElementById("stat-tribes").textContent = state.tribes.length;
   document.getElementById("stat-evil").textContent = state.entities.filter(e => e.isEvil).length;
   document.getElementById("stat-corrupted").textContent = state.entities.filter(e => e.corrupted && !e.isEvil).length;
+  document.getElementById("stat-trex").textContent = state.entities.filter(e => e.kind === "animal" && e.species === "trex").length;
 }
 
 // ----- Ability button UI ---------------------------------------------------

@@ -80,6 +80,8 @@ export const INCITE_CORRUPT_COUNT = 3;
 
 export const RAID_KILL_CHANCE = 0.05;
 export const HUNTER_KILL_CHANCE = 0.09;
+export const PREDATOR_HUMAN_KILL_CHANCE = 0.12;
+export const HUNTER_BEAST_KILL_CHANCE = 0.14;
 export const SHAMAN_HEAL_AMOUNT = 30;
 export const SHAMAN_CURE_CHANCE = 0.01;
 export const COMBAT_TIER_BONUS = 0.1; // extra multiplier per unlocked tech tier
@@ -95,6 +97,11 @@ export const WALL_PROTECT_MUL = 0.4; // raid kill chance multiplier for walled +
 
 export const TRIBE_GRACE_TICKS = 60;
 export const LOOT_PER_EVIL_TIER = 5;
+
+// ----- Apex predator (population control valve) -------------------------
+export const POP_EXPLOSION_THRESHOLD = { predator: 30, companion: 30, prey: 120, human: 250 };
+export const POP_EXPLOSION_CULL_FRACTION = 0.1;
+export const POP_CATEGORY_LABEL = { predator: "猛獸", companion: "狗群", prey: "家禽家畜", human: "人口" };
 
 export const BIG_TREE_GROW_TICKS = 260;
 export const BIG_TREE_WOOD_BONUS = 10;
@@ -126,8 +133,10 @@ export const ANIMAL_ROLE = {};
 for (const s of ANIMAL_SPECIES) ANIMAL_ROLE[s] = "prey";
 for (const s of PREDATOR_SPECIES) ANIMAL_ROLE[s] = "predator";
 for (const s of COMPANION_SPECIES) ANIMAL_ROLE[s] = "companion";
+ANIMAL_ROLE.trex = "apex";
 
 export function animalSpeedFor(species) {
+  if (species === "trex") return ANIMAL_SPEED * 1.15;
   if (species === "cheetah") return ANIMAL_SPEED * 2.2;
   if (species === "lion") return ANIMAL_SPEED * 1.4;
   if (species === "dog") return ANIMAL_SPEED * 1.3;
