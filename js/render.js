@@ -213,7 +213,7 @@ function drawAnimalBody(species, px, py) {
 }
 
 function drawEntities() {
-  const trees = [], animals = [], humans = [], houses = [], fishes = [], whales = [];
+  const trees = [], animals = [], humans = [], houses = [], fishes = [], whales = [], walls = [];
   for (const e of state.entities) {
     if (e.kind === "tree") trees.push(e);
     else if (e.kind === "animal") animals.push(e);
@@ -221,9 +221,23 @@ function drawEntities() {
     else if (e.kind === "house") houses.push(e);
     else if (e.kind === "fish") fishes.push(e);
     else if (e.kind === "whale") whales.push(e);
+    else if (e.kind === "wall") walls.push(e);
   }
   const byY = (a, b) => a.y - b.y;
   trees.sort(byY); animals.sort(byY); humans.sort(byY); houses.sort(byY);
+
+  for (const w of walls) {
+    const px = w.x * TILE + TILE / 2, py = w.y * TILE + TILE / 2;
+    drawShadow(px, py, 5, 2);
+    ctx.fillStyle = "#8a8175";
+    ctx.fillRect(px - 5, py - 6, 10, 8);
+    ctx.fillStyle = "#6b6459";
+    for (let bx = -5; bx < 5; bx += 3) {
+      ctx.fillRect(px + bx, py - 6, 1.4, 8);
+    }
+    ctx.fillStyle = "#a39a8c";
+    ctx.fillRect(px - 5, py - 7, 10, 1.6);
+  }
 
   for (const w of whales) {
     const px = w.x * TILE + TILE / 2, py = w.y * TILE + TILE / 2;
@@ -252,12 +266,17 @@ function drawEntities() {
 
   for (const e of houses) {
     const px = e.x * TILE + TILE / 2, py = e.y * TILE + TILE / 2;
+    const era = e.era ?? -1; // -1: stone age, 0-2: fire/farming/tribe, 3+: bronze and beyond
     drawShadow(px, py, 6, 2.2);
+    if (era >= 3) {
+      ctx.fillStyle = "#8a8175"; // stone-reinforced base once metalworking arrives
+      ctx.fillRect(px - 5.6, py - 1.6, 11.2, 7);
+    }
     ctx.fillStyle = "#c9a06b";
     ctx.fillRect(px - 5, py - 1, 10, 6);
     ctx.fillStyle = "#6b5a4a";
     ctx.fillRect(px + 2.6, py - 11, 2.4, 4.5);
-    ctx.fillStyle = "#8a4b3a";
+    ctx.fillStyle = era >= 3 ? "#5a5952" : "#8a4b3a";
     ctx.beginPath();
     ctx.moveTo(px - 6.5, py - 1);
     ctx.lineTo(px, py - 8);
@@ -266,6 +285,21 @@ function drawEntities() {
     ctx.fill();
     ctx.fillStyle = "#5a3722";
     ctx.fillRect(px - 1.5, py + 1, 3, 4);
+    if (era >= 6) { // swords/rifles era: a raised banner
+      ctx.strokeStyle = "#5a5952";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(px - 4, py - 8); ctx.lineTo(px - 4, py - 13); ctx.stroke();
+      ctx.fillStyle = "#c0392b";
+      ctx.beginPath(); ctx.moveTo(px - 4, py - 13); ctx.lineTo(px - 0.5, py - 11.5); ctx.lineTo(px - 4, py - 10); ctx.closePath(); ctx.fill();
+    }
+    if (era >= 8) { // autorifles and beyond: an antenna with a warning glow
+      ctx.strokeStyle = "#9aa5b0";
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.moveTo(px + 3.8, py - 11); ctx.lineTo(px + 4.6, py - 15); ctx.stroke();
+      const glow = 0.4 + Math.sin(performance.now() * 0.006) * 0.3;
+      ctx.fillStyle = `rgba(255,80,60,${0.5 + glow * 0.4})`;
+      ctx.beginPath(); ctx.arc(px + 4.6, py - 15, 1.2, 0, 7); ctx.fill();
+    }
   }
 
   for (const e of trees) {
@@ -275,14 +309,18 @@ function drawEntities() {
       ctx.fillStyle = "#8bd17a";
       ctx.beginPath(); ctx.arc(px, py, 2.2, 0, 7); ctx.fill();
     } else {
-      const r = e.stage === 1 ? 4 : 7;
+      const r = e.stage === 1 ? 4 : e.stage === 2 ? 7 : 9.5;
       drawShadow(px, py, r * 0.9, r * 0.35);
-      ctx.fillStyle = "#4a2f1a";
-      ctx.fillRect(px - 1, py - r * 0.1, 2, r * 0.7);
-      ctx.fillStyle = e.stage === 1 ? "#4fae5c" : "#2f8f43";
+      ctx.fillStyle = e.stage === 3 ? "#3a2412" : "#4a2f1a";
+      ctx.fillRect(px - (e.stage === 3 ? 1.6 : 1), py - r * 0.1, e.stage === 3 ? 3.2 : 2, r * 0.7);
+      ctx.fillStyle = e.stage === 1 ? "#4fae5c" : e.stage === 2 ? "#2f8f43" : "#256b36";
       ctx.beginPath(); ctx.arc(px, py - r * 0.35, r, 0, 7); ctx.fill();
-      ctx.fillStyle = e.stage === 1 ? "#63c26e" : "#3fa855";
+      ctx.fillStyle = e.stage === 1 ? "#63c26e" : e.stage === 2 ? "#3fa855" : "#337d42";
       ctx.beginPath(); ctx.arc(px - r * 0.3, py - r * 0.55, r * 0.6, 0, 7); ctx.fill();
+      if (e.stage === 3) {
+        ctx.fillStyle = "#3fa855";
+        ctx.beginPath(); ctx.arc(px + r * 0.35, py - r * 0.5, r * 0.45, 0, 7); ctx.fill();
+      }
       if (e.hasFruit) {
         ctx.fillStyle = "#e2543b";
         ctx.beginPath(); ctx.arc(px + r * 0.4, py - r * 0.2, 1.6, 0, 7); ctx.fill();
@@ -299,8 +337,15 @@ function drawEntities() {
   for (const h of humans) {
     const px = h.x * TILE + TILE / 2, py = h.y * TILE + TILE / 2;
     const isAdult = h.age >= ADULT_AGE;
-    const r = h.isSage ? 4.4 : (isAdult ? 3.6 : 2.4);
-    const color = h.isSage ? "#ffd35c" : (h.gender === "m" ? "#4fb0ff" : "#ff7fc0");
+    const r = (h.isSage || h.isEvil) ? 4.4 : (isAdult ? 3.6 : 2.4);
+    let color;
+    if (h.isEvil) color = "#7a1620";
+    else if (h.isSage) color = "#ffd35c";
+    else if (h.corrupted) color = "#4a1c22";
+    else if (h.role === "hunter") color = "#3f9142";
+    else if (h.role === "shaman") color = "#a56fe0";
+    else color = h.gender === "m" ? "#4fb0ff" : "#ff7fc0";
+
     if (h.isSage) {
       const glowR = 8 + Math.sin(performance.now() * 0.003) * 1.5;
       const glow = ctx.createRadialGradient(px, py, 1, px, py, glowR);
@@ -308,12 +353,33 @@ function drawEntities() {
       glow.addColorStop(1, "rgba(255,220,120,0)");
       ctx.fillStyle = glow;
       ctx.beginPath(); ctx.arc(px, py, glowR, 0, 7); ctx.fill();
+    } else if (h.isEvil) {
+      const glowR = 8 + Math.sin(performance.now() * 0.003) * 1.5;
+      const glow = ctx.createRadialGradient(px, py, 1, px, py, glowR);
+      glow.addColorStop(0, "rgba(160,20,30,0.55)");
+      glow.addColorStop(1, "rgba(160,20,30,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(px, py, glowR, 0, 7); ctx.fill();
+    } else if (h.role === "shaman") {
+      const glowR = 6 + Math.sin(performance.now() * 0.004) * 1;
+      const glow = ctx.createRadialGradient(px, py, 1, px, py, glowR);
+      glow.addColorStop(0, "rgba(180,120,230,0.4)");
+      glow.addColorStop(1, "rgba(180,120,230,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(px, py, glowR, 0, 7); ctx.fill();
     }
+
     drawShadow(px, py, r * 1.1, r * 0.45);
     ctx.fillStyle = color;
     ctx.beginPath(); ctx.ellipse(px, py + r * 0.3, r * 0.85, r, 0, 0, 7); ctx.fill();
     ctx.fillStyle = adjustColor(color, 35);
     ctx.beginPath(); ctx.arc(px, py - r * 0.65, r * 0.62, 0, 7); ctx.fill();
+
+    if (h.corrupted && !h.isEvil) {
+      ctx.strokeStyle = "rgba(200,40,50,0.7)";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(px, py, r + 2.4, 0, 7); ctx.stroke();
+    }
     if (h.state === "seekFood") {
       ctx.strokeStyle = "#ffcf6b";
       ctx.lineWidth = 1;

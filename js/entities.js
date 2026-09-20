@@ -6,7 +6,7 @@ import { state, addEntity } from "./state.js";
 export function makeTree(x, y) {
   return addEntity({
     kind: "tree", x, y, stage: 0, growTimer: 0,
-    hasFruit: false, fruitTimer: 0, lightningHits: 0,
+    hasFruit: false, fruitTimer: 0, bigTimer: 0, lightningHits: 0,
   });
 }
 
@@ -29,6 +29,10 @@ export function makeHuman(x, y, gender, age) {
     mateCd: randInt(0, 15),
     panicTicks: 0,
     isSage: false,
+    isEvil: false,
+    corrupted: false,
+    role: "villager",
+    tribeId: null,
   });
 }
 
@@ -38,7 +42,19 @@ export function makeSage(x, y) {
     age: ADULT_AGE, hunger: 0, state: "sage",
     moveTX: x, moveTY: y, wanderCd: randInt(30, 60),
     starveTicks: 0, mateCd: 999999, panicTicks: 0, isSage: true,
-    teachCooldown: 0,
+    isEvil: false, corrupted: false, role: "sage", tribeId: null,
+    teachCooldown: 0, hadMembers: false, zeroPopTick: null,
+  });
+}
+
+export function makeEvil(x, y) {
+  return addEntity({
+    kind: "human", x, y, gender: choice(["m", "f"]),
+    age: ADULT_AGE, hunger: 0, state: "evil",
+    moveTX: x, moveTY: y, wanderCd: randInt(20, 40),
+    starveTicks: 0, mateCd: 999999, panicTicks: 0, isSage: false,
+    isEvil: true, corrupted: true, role: "evil", tribeId: null,
+    inciteCooldown: 0, hadMembers: false, zeroPopTick: null,
   });
 }
 
@@ -56,4 +72,8 @@ export function treeAt(tx, ty) {
 
 export function sageAt(tx, ty) {
   return state.entities.find(e => e.isSage && Math.round(e.x) === tx && Math.round(e.y) === ty);
+}
+
+export function evilAt(tx, ty) {
+  return state.entities.find(e => e.isEvil && Math.round(e.x) === tx && Math.round(e.y) === ty);
 }

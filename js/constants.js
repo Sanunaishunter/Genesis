@@ -54,8 +54,50 @@ export const MOUNTAIN_BRUSH_RADIUS = 2;
 
 export const SAGE_WORSHIP_RADIUS = 10;
 export const WISDOM_PER_WORSHIPPER = 0.015;
-export const TECH_THRESHOLD = { fire: 40, farming: 120, tribe: 300 };
-export const TECH_LABEL = { fire: "🔥用火", farming: "🌾農耕", tribe: "🏘️部落" };
+
+export const TECH_ORDER = [
+  "fire", "farming", "tribe",
+  "bronze", "copper", "iron", "swords",
+  "rifles", "autorifles", "missiles", "nuclear",
+];
+export const TECH_THRESHOLD = {
+  fire: 40, farming: 120, tribe: 300,
+  bronze: 500, copper: 700, iron: 950, swords: 1250,
+  rifles: 1650, autorifles: 2150, missiles: 2750, nuclear: 3500,
+};
+export const TECH_LABEL = {
+  fire: "🔥用火", farming: "🌾農耕", tribe: "🏘️部落",
+  bronze: "🟫青銅器", copper: "🟠銅器", iron: "⚙️鐵器", swords: "⚔️刀劍",
+  rifles: "🔫步槍", autorifles: "💥全自動步槍", missiles: "🚀飛彈", nuclear: "☢️核子武器",
+};
+
+// ----- Evil deity / corruption / tribes ---------------------------------
+export const EVIL_CAP = 5;
+export const EVIL_CORRUPT_RADIUS = 10;
+export const CORRUPTION_CHANCE_PER_TICK = 0.006;
+export const INCITE_COOLDOWN = 15;
+export const INCITE_CORRUPT_COUNT = 3;
+
+export const RAID_KILL_CHANCE = 0.05;
+export const HUNTER_KILL_CHANCE = 0.09;
+export const SHAMAN_HEAL_AMOUNT = 30;
+export const SHAMAN_CURE_CHANCE = 0.01;
+export const COMBAT_TIER_BONUS = 0.1; // extra multiplier per unlocked tech tier
+
+export const HUNTER_RATIO = 0.15;
+export const SHAMAN_RATIO = 0.1;
+export const PROFESSION_PROMOTE_CHANCE = 0.02;
+
+export const WALL_COST = 15;
+export const WALL_RING_COUNT = 10;
+export const WALL_RADIUS = 6;
+export const WALL_PROTECT_MUL = 0.4; // raid kill chance multiplier for walled + protected targets
+
+export const TRIBE_GRACE_TICKS = 60;
+export const LOOT_PER_EVIL_TIER = 5;
+
+export const BIG_TREE_GROW_TICKS = 260;
+export const BIG_TREE_WOOD_BONUS = 10;
 
 export const MIN_TREES_TO_KEEP = 4;
 export const CHOP_CHANCE_PER_TICK = 0.02;

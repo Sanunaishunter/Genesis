@@ -1,4 +1,4 @@
-import { TILE, CANVAS_W, CANVAS_H, TICK_MS, REPEAT_MS, ADULT_AGE, SEASON_LABEL, TECH_LABEL } from "./constants.js";
+import { TILE, CANVAS_W, CANVAS_H, TICK_MS, REPEAT_MS, ADULT_AGE, SEASON_LABEL, TECH_LABEL, TECH_ORDER } from "./constants.js";
 import { state } from "./state.js";
 import { toast } from "./toast.js";
 import { applyGodAction, setSpeed, isWeatherLocked } from "./abilities.js";
@@ -30,11 +30,14 @@ function updateStats() {
 
   document.getElementById("stat-season").textContent = SEASON_LABEL[state.season];
 
-  const techParts = ["fire", "farming", "tribe"].filter(k => state.tech[k]).map(k => TECH_LABEL[k]);
+  const techParts = TECH_ORDER.filter(k => state.tech[k]).map(k => TECH_LABEL[k]);
   document.getElementById("stat-tech").textContent = techParts.length ? techParts.join(" ") : "尚未開化";
 
   document.getElementById("stat-wood").textContent = Math.floor(state.wood);
   document.getElementById("stat-houses").textContent = state.entities.filter(e => e.kind === "house").length;
+  document.getElementById("stat-tribes").textContent = state.tribes.length;
+  document.getElementById("stat-evil").textContent = state.entities.filter(e => e.isEvil).length;
+  document.getElementById("stat-corrupted").textContent = state.entities.filter(e => e.corrupted && !e.isEvil).length;
 }
 
 // ----- Ability button UI ---------------------------------------------------

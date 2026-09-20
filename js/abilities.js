@@ -4,14 +4,15 @@ import {
   FIRE_DURATION, FIRE_BRUSH_RADIUS, MOUNTAIN_BRUSH_RADIUS,
   EARTHQUAKE_RADIUS, PANIC_DURATION, SHAKE_DURATION,
   LIGHTNING_HITS_TO_IGNITE,
-  ANIMAL_CAP, SAGE_CAP, FISH_CAP, WHALE_CAP, BEAST_SPECIES,
-  TEACH_WISDOM_BOOST, TEACH_COOLDOWN, TECH_LABEL,
+  ANIMAL_CAP, SAGE_CAP, EVIL_CAP, FISH_CAP, WHALE_CAP, BEAST_SPECIES,
+  TEACH_WISDOM_BOOST, TEACH_COOLDOWN, TECH_LABEL, TECH_ORDER,
+  INCITE_COOLDOWN, INCITE_CORRUPT_COUNT, EVIL_CORRUPT_RADIUS, ADULT_AGE,
 } from "./constants.js";
 import { rand, randRange, choice } from "./rng.js";
 import { clamp, dist2 } from "./utils.js";
 import { toast } from "./toast.js";
-import { state, addEffect, isLand, isOcean, findLandNear, findNearestCave } from "./state.js";
-import { makeTree, makeAnimal, makeHuman, makeSage, makeFish, makeWhale, treeAt, sageAt } from "./entities.js";
+import { state, addEffect, isLand, isOcean, findLandNear, findNearestShelter } from "./state.js";
+import { makeTree, makeAnimal, makeHuman, makeSage, makeEvil, makeFish, makeWhale, treeAt, sageAt, evilAt } from "./entities.js";
 import { popCap } from "./tech.js";
 
 export function setSpeed(s) {
@@ -25,11 +26,29 @@ export function isWeatherLocked() {
 
 export function commandSageTeach(sage, silent) {
   if (sage.teachCooldown > 0) { if (!silent) toast("聖人正在傳授中，請稍候"); return; }
-  const nextTech = !state.tech.fire ? "fire" : !state.tech.farming ? "farming" : !state.tech.tribe ? "tribe" : null;
+  const nextTech = TECH_ORDER.find(key => !state.tech[key]);
   if (!nextTech) { if (!silent) toast("🧙 各項智慧都已傳授完畢"); return; }
   state.wisdom += TEACH_WISDOM_BOOST;
   sage.teachCooldown = TEACH_COOLDOWN;
   toast("🧙 聖人正傳授「" + TECH_LABEL[nextTech] + "」的智慧！");
+}
+
+export function commandEvilIncite(evil, silent) {
+  if (evil.inciteCooldown > 0) { if (!silent) toast("惡人正在煽動人心，請稍候"); return; }
+  const targets = state.entities.filter(e =>
+    e.kind === "human" && e.role === "villager" && !e.corrupted && e.age >= ADULT_AGE &&
+    dist2(e, evil) <= EVIL_CORRUPT_RADIUS * EVIL_CORRUPT_RADIUS
+  );
+  if (targets.length === 0) { if (!silent) toast("😈 附近沒有可以煽動的村民"); return; }
+  let turned = 0;
+  for (let i = 0; i < INCITE_CORRUPT_COUNT && targets.length > 0; i++) {
+    const idx = Math.floor(rand() * targets.length);
+    const t = targets.splice(idx, 1)[0];
+    t.corrupted = true; t.role = "raider";
+    turned++;
+  }
+  evil.inciteCooldown = INCITE_COOLDOWN;
+  toast(turned > 0 ? "😈 惡人煽動人心，" + turned + " 位村民黑化了" : "😈 附近沒有可以煽動的村民");
 }
 
 export function paintWeather(tx, ty, type) {
@@ -86,12 +105,12 @@ export function triggerEarthquake(tx, ty) {
   const epi = { x: tx, y: ty };
   for (const e of state.entities) {
     if (e.kind === "human" || e.kind === "animal") {
-      if (e.isSage) continue; // sages are unshaken
+      if (e.isSage || e.isEvil) continue; // leaders are unshaken
       if (dist2(e, epi) <= EARTHQUAKE_RADIUS * EARTHQUAKE_RADIUS) {
         e.panicTicks = PANIC_DURATION;
-        const cave = findNearestCave(e.x, e.y, 12);
-        if (cave) {
-          e.moveTX = cave.x; e.moveTY = cave.y;
+        const shelter = findNearestShelter(e.x, e.y, 12);
+        if (shelter) {
+          e.moveTX = shelter.x; e.moveTY = shelter.y;
         } else {
           const angle = Math.atan2(e.y - ty, e.x - tx) + randRange(-0.6, 0.6);
           const fleeDist = randRange(5, 10);
@@ -179,6 +198,20 @@ export function applyGodAction(tx, ty, opts) {
     } else if (isLand(state.tiles, tx, ty)) {
       makeSage(tx, ty);
       if (!silent) toast("🧙 一位聖人降臨，人們開始向祂膜拜");
+    } else if (!silent) {
+      toast("這裡無法施展這項能力");
+    }
+    return;
+  }
+  if (tool === "evil") {
+    const existing = evilAt(tx, ty);
+    if (existing) {
+      commandEvilIncite(existing, silent);
+    } else if (state.entities.filter(e => e.isEvil).length >= EVIL_CAP) {
+      if (!silent) toast("惡人的數量已經足夠");
+    } else if (isLand(state.tiles, tx, ty)) {
+      makeEvil(tx, ty);
+      if (!silent) toast("😈 一位惡人降臨，黑暗開始蔓延");
     } else if (!silent) {
       toast("這裡無法施展這項能力");
     }

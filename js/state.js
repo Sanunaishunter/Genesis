@@ -1,4 +1,4 @@
-import { COLS, ROWS, TERRAIN } from "./constants.js";
+import { COLS, ROWS, TERRAIN, TECH_ORDER } from "./constants.js";
 import { rand, randRange } from "./rng.js";
 import { tileIndex } from "./utils.js";
 
@@ -69,6 +69,12 @@ export function isOcean(tx, ty) {
   return state.tiles[ty][tx].type === TERRAIN.WATER;
 }
 
+function makeTechState() {
+  const t = {};
+  for (const key of TECH_ORDER) t[key] = false;
+  return t;
+}
+
 // ----- Game state ----------------------------------------------------------
 export const state = {
   tiles: generateWorld(),
@@ -81,7 +87,9 @@ export const state = {
   season: "spring",
   seasonTick: 0,
   wisdom: 0,
-  tech: { fire: false, farming: false, tribe: false },
+  tech: makeTechState(),
+  evilLoot: 0,
+  tribes: [],
   wood: 0,
   readyFarmland: [],
   entities: [], // trees, animals, humans
@@ -157,4 +165,27 @@ export function isOnFire(xf, yf) {
 export function isOnCave(xf, yf) {
   const tx = tileIndex(xf, COLS), ty = tileIndex(yf, ROWS);
   return state.tiles[ty][tx].cave;
+}
+
+export function isBigTreeAt(xf, yf) {
+  const tx = tileIndex(xf, COLS), ty = tileIndex(yf, ROWS);
+  return state.entities.some(e => e.kind === "tree" && e.stage === 3 && !e.dead && Math.round(e.x) === tx && Math.round(e.y) === ty);
+}
+
+export function isSheltered(xf, yf) {
+  return isOnCave(xf, yf) || isBigTreeAt(xf, yf);
+}
+
+export function findNearestShelter(xf, yf, radius) {
+  const cx = Math.round(xf), cy = Math.round(yf);
+  let best = null, bestD = Infinity;
+  for (let y = Math.max(0, cy - radius); y <= Math.min(ROWS - 1, cy + radius); y++) {
+    for (let x = Math.max(0, cx - radius); x <= Math.min(COLS - 1, cx + radius); x++) {
+      if (isSheltered(x, y)) {
+        const d = (x - xf) * (x - xf) + (y - yf) * (y - yf);
+        if (d < bestD) { bestD = d; best = { x, y }; }
+      }
+    }
+  }
+  return best;
 }

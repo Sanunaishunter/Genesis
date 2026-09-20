@@ -5,19 +5,24 @@ import {
   SEASON_LIST, SEASON_LENGTH, SEASON_LABEL,
   FIRE_DAMAGE_CHANCE, DROWN_CHANCE, CROP_GROW_TICKS,
   ANIMAL_CAP, ANIMAL_ROLE, animalSpeedFor,
-  SAGE_WORSHIP_RADIUS, WISDOM_PER_WORSHIPPER, TECH_THRESHOLD,
+  SAGE_WORSHIP_RADIUS, WISDOM_PER_WORSHIPPER, TECH_ORDER, TECH_THRESHOLD, TECH_LABEL,
   MIN_TREES_TO_KEEP, CHOP_CHANCE_PER_TICK, WOOD_PER_CHOP, WOOD_PER_FARM_CLEAR,
   HOUSE_COST, HOUSE_CAP, BRIDGE_COST,
+  EVIL_CORRUPT_RADIUS, CORRUPTION_CHANCE_PER_TICK,
+  RAID_KILL_CHANCE, HUNTER_KILL_CHANCE, SHAMAN_HEAL_AMOUNT, SHAMAN_CURE_CHANCE, COMBAT_TIER_BONUS,
+  HUNTER_RATIO, SHAMAN_RATIO, PROFESSION_PROMOTE_CHANCE,
+  WALL_COST, WALL_RING_COUNT, WALL_RADIUS, WALL_PROTECT_MUL,
+  TRIBE_GRACE_TICKS, BIG_TREE_GROW_TICKS, BIG_TREE_WOOD_BONUS,
 } from "./constants.js";
 import { rand, randRange, randInt, choice } from "./rng.js";
 import { dist2 } from "./utils.js";
 import { toast } from "./toast.js";
 import {
-  state, addEntity, addEffect, isLand, isDangerousRiver, isOnFire, isOnCave,
+  state, addEntity, addEffect, isLand, isDangerousRiver, isOnFire, isSheltered,
   weatherAt, findLandNear, findWaterNear,
 } from "./state.js";
 import { makeAnimal, makeHuman, treeAt } from "./entities.js";
-import { popCap, mateCooldown, fruitNeedTicks } from "./tech.js";
+import { popCap, mateCooldown, fruitNeedTicks, techTier, evilTier } from "./tech.js";
 
 function weatherGrowMul(type) {
   switch (type) {
@@ -87,17 +92,17 @@ function tickFire() {
   }
   for (const e of state.entities) {
     if (!isOnFire(e.x, e.y)) continue;
-    if (isOnCave(e.x, e.y)) continue; // caves shelter from fire
+    if (isSheltered(e.x, e.y)) continue; // caves and big trees shelter from fire
     if (e.kind === "tree") { if (rand() < FIRE_DAMAGE_CHANCE.tree) e.dead = true; }
     else if (e.kind === "human" || e.kind === "animal") {
-      if (!e.isSage && rand() < FIRE_DAMAGE_CHANCE.creature) e.dead = true;
+      if (!e.isSage && !e.isEvil && rand() < FIRE_DAMAGE_CHANCE.creature) e.dead = true;
     }
   }
 }
 
 function tickRiverHazard() {
   for (const e of state.entities) {
-    if (e.kind === "tree" || e.kind === "fish" || e.kind === "whale" || e.isSage) continue;
+    if (e.kind === "tree" || e.kind === "fish" || e.kind === "whale" || e.isSage || e.isEvil) continue;
     if (isDangerousRiver(e.x, e.y) && rand() < DROWN_CHANCE) e.dead = true;
   }
 }
@@ -152,8 +157,8 @@ function tickTrees() {
     if (e.kind !== "tree") continue;
     const w = weatherAt(e.x, e.y);
     const growMul = weatherGrowMul(w) * seasonGrowMul();
-    if (w === "storm" && rand() < (e.stage < 2 ? 0.05 : 0.012)) {
-      e.dead = true; // young growth or rare mature tree knocked down
+    if (w === "storm" && rand() < (e.stage < 2 ? 0.05 : e.stage === 3 ? 0.006 : 0.012)) {
+      e.dead = true; // young growth or rare mature/ancient tree knocked down
       continue;
     }
     if (e.stage < 2) {
@@ -164,6 +169,10 @@ function tickTrees() {
       if (!e.hasFruit) {
         e.fruitTimer += 1 / growMul;
         if (e.fruitTimer >= fruitNeedTicks()) { e.hasFruit = true; e.fruitTimer = 0; }
+      }
+      if (e.stage === 2) {
+        e.bigTimer = (e.bigTimer || 0) + 1 / growMul;
+        if (e.bigTimer >= BIG_TREE_GROW_TICKS) { e.stage = 3; e.bigTimer = 0; }
       }
     }
   }
@@ -237,7 +246,7 @@ function tickAnimals() {
 function nearestFoodForHuman(h) {
   let best = null, bestD = SENSE_RADIUS * SENSE_RADIUS, bestIsFarm = false;
   for (const e of state.entities) {
-    if ((e.kind === "tree" && e.stage === 2 && e.hasFruit) || (e.kind === "animal" && ANIMAL_ROLE[e.species] === "prey") || e.kind === "fish") {
+    if ((e.kind === "tree" && (e.stage === 2 || e.stage === 3) && e.hasFruit) || (e.kind === "animal" && ANIMAL_ROLE[e.species] === "prey") || e.kind === "fish") {
       const d = dist2(h, e);
       if (d < bestD) { bestD = d; best = e; bestIsFarm = false; }
     }
@@ -255,15 +264,18 @@ function tickWisdomAndTech(humans) {
   let worshippers = 0;
   for (const s of sages) {
     for (const h of humans) {
-      if (h.isSage) continue;
+      if (h.isSage || h.isEvil) continue;
       if (h.age >= ADULT_AGE && dist2(h, s) <= SAGE_WORSHIP_RADIUS * SAGE_WORSHIP_RADIUS) worshippers++;
     }
   }
   if (worshippers === 0) return;
   state.wisdom += worshippers * WISDOM_PER_WORSHIPPER;
-  if (!state.tech.fire && state.wisdom >= TECH_THRESHOLD.fire) { state.tech.fire = true; toast("🔥 人類學會了用火！"); }
-  if (!state.tech.farming && state.wisdom >= TECH_THRESHOLD.farming) { state.tech.farming = true; toast("🌾 人類學會了農耕！"); }
-  if (!state.tech.tribe && state.wisdom >= TECH_THRESHOLD.tribe) { state.tech.tribe = true; toast("🏘️ 人類建立了部落！"); }
+  for (const key of TECH_ORDER) {
+    if (!state.tech[key] && state.wisdom >= TECH_THRESHOLD[key]) {
+      state.tech[key] = true;
+      toast(TECH_LABEL[key] + " 的智慧降臨了部落！");
+    }
+  }
 }
 
 function findBridgeCandidate(humans) {
@@ -288,7 +300,7 @@ function findBridgeCandidate(humans) {
 function nearestChoppableTree(h) {
   let target = null, bestD = SENSE_RADIUS * SENSE_RADIUS;
   for (const e of state.entities) {
-    if (e.kind === "tree" && e.stage === 2) {
+    if (e.kind === "tree" && e.stage >= 2) {
       const d = dist2(h, e);
       if (d < bestD) { bestD = d; target = e; }
     }
@@ -296,17 +308,21 @@ function nearestChoppableTree(h) {
   return target;
 }
 
+function chopTreeYield(target) {
+  return WOOD_PER_CHOP + (target.stage === 3 ? BIG_TREE_WOOD_BONUS : 0);
+}
+
 function tickCivilizationBuildings(humans) {
   if (!state.tech.tribe) return;
 
   if (state.wood >= HOUSE_COST && state.entities.filter(e => e.kind === "house").length < HOUSE_CAP) {
     let sx = 0, sy = 0, n = 0;
-    for (const h of humans) { if (!h.isSage) { sx += h.x; sy += h.y; n++; } }
+    for (const h of humans) { if (!h.isSage && !h.isEvil) { sx += h.x; sy += h.y; n++; } }
     if (n > 0) {
       const cx = sx / n, cy = sy / n;
       const spot = findLandNear(Math.round(cx + randRange(-3, 3)), Math.round(cy + randRange(-3, 3)), 3);
       if (spot && !treeAt(spot.x, spot.y)) {
-        addEntity({ kind: "house", x: spot.x, y: spot.y, smokeCd: randInt(4, 12) });
+        addEntity({ kind: "house", x: spot.x, y: spot.y, smokeCd: randInt(4, 12), era: techTier() });
         state.wood -= HOUSE_COST;
         toast("🏠 部落蓋起了一座房子");
       }
@@ -323,6 +339,120 @@ function tickCivilizationBuildings(humans) {
   }
 }
 
+// ----- Tribes, corruption & conquest --------------------------------------
+
+function tickTribes(humans) {
+  const leaders = humans.filter(h => (h.isSage || h.isEvil) && !h.dead);
+  for (const h of humans) {
+    if (h.isSage || h.isEvil) { h.tribeId = h.id; continue; }
+    if (leaders.length === 0) { h.tribeId = null; continue; }
+    let best = null, bestD = Infinity;
+    for (const l of leaders) {
+      const d = dist2(h, l);
+      if (d < bestD) { bestD = d; best = l; }
+    }
+    h.tribeId = best.id;
+  }
+  state.tribes = leaders.map(l => ({
+    id: l.id,
+    leader: l,
+    kind: l.isEvil ? "evil" : "good",
+    members: humans.filter(h => h.tribeId === l.id && h !== l),
+  }));
+}
+
+function tribeHasWalls(tribeId) {
+  return state.entities.some(e => e.kind === "wall" && e.tribeId === tribeId && !e.dead);
+}
+
+function isRaidProtected(target) {
+  if (target.tribeId == null) return false;
+  const tribe = state.tribes.find(t => t.id === target.tribeId);
+  if (!tribe || tribe.kind !== "good") return false;
+  if (!tribeHasWalls(tribe.id)) return false;
+  return dist2(target, tribe.leader) <= WALL_RADIUS * WALL_RADIUS;
+}
+
+function tickCorruption(humans) {
+  const evils = humans.filter(h => h.isEvil && !h.dead);
+  if (evils.length === 0) return;
+  for (const h of humans) {
+    if (h.role !== "villager" || h.corrupted || h.age < ADULT_AGE) continue;
+    for (const e of evils) {
+      if (dist2(h, e) <= EVIL_CORRUPT_RADIUS * EVIL_CORRUPT_RADIUS) {
+        if (rand() < CORRUPTION_CHANCE_PER_TICK) {
+          h.corrupted = true;
+          h.role = "raider";
+          toast("😈 一位村民黑化了，加入了惡人的隊伍");
+        }
+        break;
+      }
+    }
+  }
+}
+
+function tickConquest() {
+  for (const tribe of state.tribes) {
+    if (tribe.leader.dead) continue;
+    const alive = tribe.members.filter(m => !m.dead).length;
+    if (alive > 0) {
+      tribe.leader.hadMembers = true;
+      tribe.leader.zeroPopTick = null;
+      continue;
+    }
+    if (!tribe.leader.hadMembers) continue; // never had a population to lose yet
+    if (tribe.leader.zeroPopTick == null) { tribe.leader.zeroPopTick = state.day; continue; }
+    if (state.day - tribe.leader.zeroPopTick >= TRIBE_GRACE_TICKS) {
+      tribe.leader.dead = true;
+      addEffect({ type: "skeleton", x: tribe.leader.x, y: tribe.leader.y, life: 40, maxLife: 40 });
+      toast(tribe.kind === "good" ? "💀 一個部落人口歸零，已被征服" : "💀 惡人部落人口歸零，黑暗力量消散了");
+    }
+  }
+}
+
+function tickWalls() {
+  if (state.wood < WALL_COST) return;
+  const anyEvil = state.tribes.some(t => t.kind === "evil");
+  if (!anyEvil) return;
+  for (const tribe of state.tribes) {
+    if (tribe.kind !== "good") continue;
+    const builtCount = state.entities.filter(e => e.kind === "wall" && e.tribeId === tribe.id).length;
+    if (builtCount >= WALL_RING_COUNT) continue;
+    if (state.wood < WALL_COST) break;
+    const angle = (builtCount / WALL_RING_COUNT) * Math.PI * 2;
+    const wx = Math.round(tribe.leader.x + Math.cos(angle) * WALL_RADIUS);
+    const wy = Math.round(tribe.leader.y + Math.sin(angle) * WALL_RADIUS);
+    if (!isLand(state.tiles, wx, wy)) continue;
+    addEntity({ kind: "wall", x: wx, y: wy, tribeId: tribe.id });
+    state.wood -= WALL_COST;
+    if (builtCount === 0) toast("🧱 聖人教導村民築起了圍牆，保護資源與族人");
+  }
+}
+
+function tickProfessions() {
+  const evilPresent = state.tribes.some(t => t.kind === "evil");
+  if (!evilPresent) return;
+  for (const tribe of state.tribes) {
+    if (tribe.kind !== "good") continue;
+    const alive = tribe.members.filter(m => !m.dead);
+    const villagers = alive.filter(m => m.role === "villager" && m.age >= ADULT_AGE);
+    let hunters = alive.filter(m => m.role === "hunter").length;
+    let shamans = alive.filter(m => m.role === "shaman").length;
+    const base = alive.length;
+    const hunterTarget = Math.max(1, Math.floor(base * HUNTER_RATIO));
+    const shamanTarget = Math.max(1, Math.floor(base * SHAMAN_RATIO));
+    for (const v of villagers) {
+      if (hunters < hunterTarget && rand() < PROFESSION_PROMOTE_CHANCE) {
+        v.role = "hunter"; hunters++;
+        toast("🏹 一位村民成為了獵人，保衛族人");
+      } else if (shamans < shamanTarget && rand() < PROFESSION_PROMOTE_CHANCE) {
+        v.role = "shaman"; shamans++;
+        toast("💊 一位村民成為了薩滿，救治族人");
+      }
+    }
+  }
+}
+
 function tickHumans() {
   const humans = state.entities.filter(e => e.kind === "human");
   const cap = popCap();
@@ -331,6 +461,9 @@ function tickHumans() {
   const canChop = state.tech.tribe && treeCountOk;
   const sages = humans.filter(h => h.isSage);
 
+  tickTribes(humans);
+  tickCorruption(humans);
+
   for (const h of humans) {
     if (h.isSage) {
       if (h.teachCooldown > 0) h.teachCooldown--;
@@ -338,6 +471,16 @@ function tickHumans() {
         const spot = findLandNear(Math.round(h.x + randRange(-2, 2)), Math.round(h.y + randRange(-2, 2)), 2);
         if (spot) { h.moveTX = spot.x; h.moveTY = spot.y; }
         h.wanderCd = randInt(30, 60);
+      } else h.wanderCd--;
+      continue;
+    }
+
+    if (h.isEvil) {
+      if (h.inciteCooldown > 0) h.inciteCooldown--;
+      if (h.wanderCd <= 0) {
+        const spot = findLandNear(Math.round(h.x + randRange(-3, 3)), Math.round(h.y + randRange(-3, 3)), 2);
+        if (spot) { h.moveTX = spot.x; h.moveTY = spot.y; }
+        h.wanderCd = randInt(20, 40);
       } else h.wanderCd--;
       continue;
     }
@@ -368,7 +511,13 @@ function tickHumans() {
 
     const isAdult = h.age >= ADULT_AGE;
 
-    if (h.hunger >= SEEK_FOOD_THRESHOLD) {
+    if (h.corrupted) {
+      h.state = (h.hunger >= SEEK_FOOD_THRESHOLD) ? "seekFood" : "raid";
+    } else if (h.role === "hunter") {
+      h.state = (h.hunger >= SEEK_FOOD_THRESHOLD) ? "seekFood" : "patrol";
+    } else if (h.role === "shaman") {
+      h.state = (h.hunger >= SEEK_FOOD_THRESHOLD) ? "seekFood" : "heal";
+    } else if (h.hunger >= SEEK_FOOD_THRESHOLD) {
       h.state = "seekFood";
     } else if (isAdult && h.hunger < MATE_HUNGER_MAX && h.mateCd <= 0 && humans.length < cap) {
       h.state = "seekMate";
@@ -404,7 +553,7 @@ function tickHumans() {
     if (h.state === "seekMate") {
       let mate = null, bestD = SENSE_RADIUS * SENSE_RADIUS;
       for (const o of humans) {
-        if (o === h || o.isSage || o.gender === h.gender) continue;
+        if (o === h || o.isSage || o.isEvil || o.gender === h.gender) continue;
         if (o.age < ADULT_AGE || o.hunger >= MATE_HUNGER_MAX || o.mateCd > 0) continue;
         const d = dist2(h, o);
         if (d < bestD) { bestD = d; mate = o; }
@@ -448,11 +597,106 @@ function tickHumans() {
         h.moveTX = target.x; h.moveTY = target.y;
         if (dist2(h, target) < 0.4) {
           target.dead = true;
-          state.wood += WOOD_PER_CHOP;
+          state.wood += chopTreeYield(target);
           h.state = "wander";
         }
       } else {
         h.state = "wander";
+      }
+    }
+
+    if (h.state === "raid") {
+      let target = null, bestD = SENSE_RADIUS * SENSE_RADIUS;
+      for (const o of humans) {
+        if (o === h || o.dead || o.corrupted || o.isEvil || o.isSage) continue;
+        const d = dist2(h, o);
+        if (d < bestD) { bestD = d; target = o; }
+      }
+      if (target) {
+        h.moveTX = target.x; h.moveTY = target.y;
+        if (dist2(h, target) < 0.5) {
+          let chance = RAID_KILL_CHANCE * (1 + evilTier() * COMBAT_TIER_BONUS);
+          if (isRaidProtected(target)) chance *= WALL_PROTECT_MUL;
+          if (rand() < chance) {
+            target.dead = true;
+            state.evilLoot++;
+            addEffect({ type: "skeleton", x: target.x, y: target.y, life: 28, maxLife: 28 });
+            toast("😈 部落遭到掠奪，一位族人倒下了");
+          }
+        }
+      } else {
+        const target2 = nearestChoppableTree(h);
+        if (target2) {
+          h.moveTX = target2.x; h.moveTY = target2.y;
+          if (dist2(h, target2) < 0.4) {
+            target2.dead = true;
+            if (rand() < 0.5) state.wood += chopTreeYield(target2); // otherwise wasted by reckless over-harvesting
+          }
+        } else if (h.wanderCd <= 0) {
+          const leader = humans.find(l => l.id === h.tribeId);
+          const cx = leader ? leader.x : h.x, cy = leader ? leader.y : h.y;
+          const spot = findLandNear(Math.round(cx + randRange(-4, 4)), Math.round(cy + randRange(-4, 4)), 3);
+          if (spot) { h.moveTX = spot.x; h.moveTY = spot.y; }
+          h.wanderCd = randInt(5, 10);
+        } else h.wanderCd--;
+      }
+    }
+
+    if (h.state === "patrol") {
+      let target = null, bestD = SENSE_RADIUS * SENSE_RADIUS;
+      for (const o of humans) {
+        if (o.dead || (!o.corrupted && !o.isEvil)) continue;
+        const d = dist2(h, o);
+        if (d < bestD) { bestD = d; target = o; }
+      }
+      if (target) {
+        h.moveTX = target.x; h.moveTY = target.y;
+        if (dist2(h, target) < 0.5 && rand() < HUNTER_KILL_CHANCE * (1 + techTier() * COMBAT_TIER_BONUS)) {
+          target.dead = true;
+          addEffect({ type: "skeleton", x: target.x, y: target.y, life: 28, maxLife: 28 });
+          toast("🏹 獵人擊退了一名黑化的敵人");
+        }
+      } else if (h.wanderCd <= 0) {
+        const leader = humans.find(l => l.id === h.tribeId);
+        const cx = leader ? leader.x : h.x, cy = leader ? leader.y : h.y;
+        const spot = findLandNear(Math.round(cx + randRange(-5, 5)), Math.round(cy + randRange(-5, 5)), 3);
+        if (spot) { h.moveTX = spot.x; h.moveTY = spot.y; }
+        h.wanderCd = randInt(5, 10);
+      } else h.wanderCd--;
+    }
+
+    if (h.state === "heal") {
+      let curTarget = null, bestCD = SENSE_RADIUS * SENSE_RADIUS;
+      for (const o of humans) {
+        if (o === h || o.dead || o.isSage || o.isEvil || !o.corrupted) continue;
+        const d = dist2(h, o);
+        if (d < bestCD) { bestCD = d; curTarget = o; }
+      }
+      if (curTarget) {
+        h.moveTX = curTarget.x; h.moveTY = curTarget.y;
+        if (dist2(h, curTarget) < 0.5 && rand() < SHAMAN_CURE_CHANCE) {
+          curTarget.corrupted = false;
+          curTarget.role = "villager";
+          toast("✨ 薩滿的祈禱洗淨了一位族人的黑暗");
+        }
+      } else {
+        let healTarget = null, bestHD = SENSE_RADIUS * SENSE_RADIUS;
+        for (const o of humans) {
+          if (o === h || o.dead || o.isSage || o.isEvil || o.corrupted) continue;
+          if (o.hunger <= 40) continue;
+          const d = dist2(h, o);
+          if (d < bestHD) { bestHD = d; healTarget = o; }
+        }
+        if (healTarget) {
+          h.moveTX = healTarget.x; h.moveTY = healTarget.y;
+          if (dist2(h, healTarget) < 0.5) healTarget.hunger = Math.max(0, healTarget.hunger - SHAMAN_HEAL_AMOUNT);
+        } else if (h.wanderCd <= 0) {
+          const leader = humans.find(l => l.id === h.tribeId);
+          const cx = leader ? leader.x : h.x, cy = leader ? leader.y : h.y;
+          const spot = findLandNear(Math.round(cx + randRange(-5, 5)), Math.round(cy + randRange(-5, 5)), 3);
+          if (spot) { h.moveTX = spot.x; h.moveTY = spot.y; }
+          h.wanderCd = randInt(5, 10);
+        } else h.wanderCd--;
       }
     }
 
@@ -474,8 +718,11 @@ function tickHumans() {
     }
   }
 
+  tickConquest();
   tickCivilizationBuildings(humans);
   tickWisdomAndTech(humans);
+  tickWalls();
+  tickProfessions();
 }
 
 export function moveEntitiesStep(dtFactor) {
