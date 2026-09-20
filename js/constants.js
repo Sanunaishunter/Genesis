@@ -9,9 +9,9 @@ export const TERRAIN = { WATER: 0, SAND: 1, GRASS: 2, MOUNTAIN: 3, RIVER: 4 };
 
 export const ADULT_AGE = 16;
 export const MAX_AGE = 90;
-export const POP_CAP = 140;
-export const ANIMAL_CAP = 60;
-export const SAGE_CAP = 5;
+export const POP_CAP = Infinity;
+export const ANIMAL_CAP = Infinity;
+export const SAGE_CAP = Infinity;
 export const HUNGER_MAX = 100;
 export const STARVE_TICKS_TO_DIE = 45;
 export const SEEK_FOOD_THRESHOLD = 55;
@@ -72,7 +72,7 @@ export const TECH_LABEL = {
 };
 
 // ----- Evil deity / corruption / tribes ---------------------------------
-export const EVIL_CAP = 5;
+export const EVIL_CAP = Infinity;
 export const EVIL_CORRUPT_RADIUS = 10;
 export const CORRUPTION_CHANCE_PER_TICK = 0.006;
 export const INCITE_COOLDOWN = 15;
@@ -104,7 +104,7 @@ export const CHOP_CHANCE_PER_TICK = 0.02;
 export const WOOD_PER_CHOP = 6;
 export const WOOD_PER_FARM_CLEAR = 3;
 export const HOUSE_COST = 30;
-export const HOUSE_CAP = 20;
+export const HOUSE_CAP = Infinity;
 export const BRIDGE_COST = 20;
 export const DROWN_CHANCE = 0.08; // per tick spent in a river tile with no bridge
 
@@ -113,8 +113,8 @@ export const CROP_GROW_TICKS = 12;
 export const TEACH_WISDOM_BOOST = 40;
 export const TEACH_COOLDOWN = 15; // ticks before a commanded sage can teach again
 
-export const FISH_CAP = 40;
-export const WHALE_CAP = 6;
+export const FISH_CAP = Infinity;
+export const WHALE_CAP = Infinity;
 export const FISH_SPEED = 0.05;
 export const WHALE_SPEED = 0.02;
 
